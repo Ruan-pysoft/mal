@@ -1,0 +1,9 @@
+-ffreestanding
+-fno-builtin
+-nostdlib
+-std=c89
+-pedantic
+-I../../../mystdlib/include/
+-Wall
+-Wextra
+-Wno-builtin-declaration-mismatch
