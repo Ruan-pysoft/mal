@@ -3,9 +3,10 @@
 #include <ministd_fmt.h>
 #include <ministd_memory.h>
 
-#include "values.h"
-#include "reader.h"
+#include "error.h"
 #include "printer.h"
+#include "reader.h"
+#include "values.h"
 
 /* `read` is a function in `ministd_fmt.h`...
  * I should either add optional prefixes to all ministd functions,
@@ -15,12 +16,13 @@
 static const value_t own
 READ(const char ref line)
 {
-	err_t err = ERR_OK;
+	perr_t err = PERR_OK;
 	const value_t own val;
 
 	val = read_str(line, &err);
-	if (err != ERR_OK) {
-		perror(err, "Encountered error while parsing input");
+	if (err.type != PT_OK) {
+		perr_display(&err, stderr, NULL);
+		fprintc('\n', stderr, NULL);
 		return NULL;
 	}
 
@@ -57,10 +59,14 @@ rep(const char ref line)
 	const char own print_res;
 
 	read_res = READ(line);
-	eval_res = EVAL(read_res);
-	print_res = PRINT(eval_res);
+	if (read_res != NULL) {
+		eval_res = EVAL(read_res);
+		print_res = PRINT(eval_res);
 
-	return print_res;
+		return print_res;
+	} else {
+		return NULL;
+	}
 }
 
 #define LINECAP (16 * 1024)
@@ -82,9 +88,11 @@ main(void)
 			return 0;
 		}
 		out = rep(linebuf);
-		prints(out, NULL);
-		printc('\n', NULL);
-		free((ptr)out);
+		if (out != NULL) {
+			prints(out, NULL);
+			printc('\n', NULL);
+			free((ptr)out);
+		}
 	}
 
 	return 0;

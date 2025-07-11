@@ -11,8 +11,8 @@ LDFLAGS       := -L. -lministd
 
 #####################
 
-SRC = values.c reader.c printer.c
-HEADERS = values.h reader.h printer.h
+SRC = values.c reader.c printer.c error.c
+HEADERS = values.h reader.h printer.h error.h
 
 S0 = step0_repl
 S1 = step1_read_print

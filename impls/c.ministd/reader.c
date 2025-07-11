@@ -1,4 +1,5 @@
 #include "reader.h"
+#include "error.h"
 #include "values.h"
 
 #include <ministd.h>
@@ -47,7 +48,7 @@ match_token(const char ref src, const struct token ref tok, const char ref to)
 	return true;
 }
 static bool
-get_token(const char ref str, usz ref idx, struct token ref out)
+get_token(const char ref str, usz ref idx, struct token ref out, perr_t ref err_out)
 {
 	while (str[*idx] != 0 && (str[*idx] <= ' ' || str[*idx] == ',')) {
 		++*idx;
@@ -71,14 +72,16 @@ get_token(const char ref str, usz ref idx, struct token ref out)
 		while (str[*idx+len] != 0 && (escape ||
 				(str[*idx+len] != '"'
 				&& str[*idx+len] != '\n'))) {
-			escape = (str[*idx+len] == '\\');
+			escape = !escape && (str[*idx+len] == '\\');
 
 			++len;
 		}
 
 		if (str[*idx+len] == '"') ++len;
 		else {
-			fprints("ERROR: Unclosed string literal\n", stderr, NULL);
+			perr_t err = { PT_EOF, { 0 } };
+			err.e.eof = " while parsing string, expected closing '\"'";
+			ERR_WITH(err, false);
 		}
 
 		out->len = len;
@@ -89,11 +92,9 @@ get_token(const char ref str, usz ref idx, struct token ref out)
 		return true;
 	} else if (str[*idx] == ';') {
 		const usz len = strlen(&str[*idx]);
-		out->len = len;
-		out->offset = *idx;
 		*idx += len;
 
-		return true;
+		return false;
 	} else if (special(str[*idx])) {
 		CHAR_TOK();
 		return true;
@@ -126,9 +127,10 @@ get_token(const char ref str, usz ref idx, struct token ref out)
 	return false;
 }
 static struct token_arr
-tokenize(const char ref str, err_t ref err_out)
+tokenize(const char ref str, perr_t ref err_out)
 {
-	err_t err = ERR_OK;
+	perr_t err = PERR_OK;
+	err_t errt = ERR_OK;
 	const struct token_arr empty = {
 		NULL,
 		0,
@@ -138,22 +140,26 @@ tokenize(const char ref str, err_t ref err_out)
 	usz str_idx = 0;
 	bool had_token;
 
-	res.toks = alloc(sizeof(*res.toks) * cap, &err);
+	res.toks = alloc(sizeof(*res.toks) * cap, &errt);
+	PTRY_FROM_WITH(errt, empty);
 	res.len = 0;
-	TRY_WITH(err, empty);
 
 	do {
 		if (res.len == cap) {
 			res.toks = realloc(
 				res.toks,
 				sizeof(*res.toks) * cap * 2,
-				&err
+				&errt
 			);
-			TRY_WITH(err, empty);
+			PTRY_FROM_WITH(errt, empty);
 			cap *= 2;
 		}
 
-		had_token = get_token(str, &str_idx, &res.toks[res.len]);
+		had_token = get_token(str, &str_idx, &res.toks[res.len], &err);
+		if (err.type != PT_OK) {
+			free(res.toks);
+			PERR_WITH(err, empty);
+		}
 		if (had_token) ++res.len;
 	} while (had_token);
 
@@ -203,11 +209,12 @@ r_peek(const struct reader ref this)
 	return this->idx >= this->toks.len ? NULL : &this->toks.toks[this->idx];
 }
 
-static const value_t own read_form(struct reader ref this, err_t ref err_out);
+static const value_t own read_form(struct reader ref this, perr_t ref err_out);
 static const struct cell own
-read_list(struct reader ref this, err_t ref err_out)
+read_list(struct reader ref this, perr_t ref err_out)
 {
-	err_t err = ERR_OK;
+	perr_t err = PERR_OK;
+	err_t errt = ERR_OK;
 	const struct token ref tok;
 	const struct cell own res = NULL;
 	const struct cell ref tail = NULL;
@@ -216,8 +223,9 @@ read_list(struct reader ref this, err_t ref err_out)
 	tok = r_peek(this);
 	if (tok == NULL || tok->len == 0) {
 		/* no tokens found OR token of length zero */
-		fprints("ERROR: Unclosed list!\n", stderr, err_out);
-		return NULL;
+		err.type = PT_EOF;
+		err.e.eof = " while parsing list, expected ')'";
+		PERR_WITH(err, NULL);
 	}
 	if (this->src[tok->offset] == ')') {
 		/* empty list */
@@ -226,24 +234,24 @@ read_list(struct reader ref this, err_t ref err_out)
 	}
 
 	val = read_form(this, &err);
-	TRY_WITH(err, NULL);
+	PTRY_WITH(err, NULL);
 
-	res = cell_new_own(val, &err);
-	TRY_WITH(err, NULL);
+	res = cell_new_own(val, &errt);
+	PTRY_FROM_WITH(errt, NULL);
 	tail = res;
 
 	tok = r_peek(this);
 	while (tok != NULL && tok->len != 0 && this->src[tok->offset] != ')') {
 		val = read_form(this, &err);
-		if (err != ERR_OK) {
+		if (err.type != PT_OK) {
 			cell_free(res);
 			ERR_WITH(err, NULL);
 		}
 
-		_cell_unsafe_append((ptr)tail, val, &err);
-		if (err != ERR_OK) {
+		_cell_unsafe_append((ptr)tail, val, &errt);
+		if (errt != ERR_OK) {
 			cell_free(res);
-			ERR_WITH(err, NULL);
+			PERR_FROM_WITH(errt, NULL);
 		}
 
 		tail = cell_tail(tail);
@@ -253,7 +261,9 @@ read_list(struct reader ref this, err_t ref err_out)
 
 	if (tok == NULL || tok->len == 0) {
 		/* no tokens found OR token of length zero */
-		fprints("ERROR: Unclosed list!\n", stderr, err_out);
+		err.type = PT_EOF;
+		err.e.eof = " while parsing list, expected ')'";
+		PERR_WITH(err, NULL);
 	} else { /* closing paren */
 		r_next(this);
 	}
@@ -261,24 +271,26 @@ read_list(struct reader ref this, err_t ref err_out)
 	return res;
 }
 static const value_t own
-read_atom(struct reader ref this, err_t ref err_out)
+read_atom(struct reader ref this, perr_t ref err_out)
 {
+	err_t err = ERR_OK;
 	const struct token ref tok = r_next(this);
+	const value_t own res;
 
 	if (tok == NULL || tok->len == 0) {
 		/* this should never happen */
 		fprints(
 			"ERROR: called `read_atom` at end of token stream!\n",
 			stderr,
-			err_out
+			&err
 		);
 		exit(1);
+		PTRY_FROM_WITH(err, NULL);
 	}
 
 	if ('0' <= this->src[tok->offset] && this->src[tok->offset] <= '9') {
 		/* number */
 
-		err_t err = ERR_OK;
 		int n = 0;
 		usz i;
 
@@ -291,89 +303,112 @@ read_atom(struct reader ref this, err_t ref err_out)
 					stderr,
 					&err
 				);
-				TRY_WITH(err, NULL);
+				PTRY_FROM_WITH(err, NULL);
 
-				return value_num(0, err_out);
+				res = value_num(0, &err);
+				PTRY_FROM_WITH(err, NULL);
+				return res;
 			}
 
 			n *= 10;
 			n += c - '0';
 		}
 
-		return value_num(n, err_out);
+		res = value_num(n, &err);
+		PTRY_FROM_WITH(err, NULL);
+		return res;
 	} else if (match_token(this->src, tok, "nil")) {
-		return value_nil(err_out);
+		res = value_nil(&err);
+		PTRY_FROM_WITH(err, NULL);
+		return res;
 	} else if (match_token(this->src, tok, "true")) {
-		return value_bool(true, err_out);
+		res = value_bool(true, &err);
+		PTRY_FROM_WITH(err, NULL);
+		return res;
 	} else if (match_token(this->src, tok, "false")) {
-		return value_bool(false, err_out);
+		res = value_bool(false, &err);
+		PTRY_FROM_WITH(err, NULL);
+		return res;
 	} else if (this->src[tok->offset] == '"') {
 		/* string */
 
 		/* TODO: actually parse the string */
 
-		err_t err = ERR_OK;
 		const struct mal_string own str = mal_string_newn(
 			&this->src[tok->offset], tok->len, &err
 		);
-		TRY_WITH(err, NULL);
+		PTRY_FROM_WITH(err, NULL);
 
-		return value_str_own(str, err_out);
+		res = value_str_own(str, &err);
+		PTRY_FROM_WITH(err, NULL);
+		return res;
 	} else {
 		/* symbol */
 
-		err_t err = ERR_OK;
 		const struct mal_string own sym = mal_string_newn(
 			&this->src[tok->offset], tok->len, &err
 		);
-		TRY_WITH(err, NULL);
+		PTRY_FROM_WITH(err, NULL);
 
-		return value_sym_own(sym, err_out);
+		res = value_sym_own(sym, &err);
+		PTRY_FROM_WITH(err, NULL);
+		return res;
 	}
 }
 static const value_t own
-read_form(struct reader ref this, err_t ref err_out)
+read_form(struct reader ref this, perr_t ref err_out)
 {
 	const struct token ref tok;
 
 	tok = r_peek(this);
 	if (tok == NULL || tok->len == 0) {
 		/* no tokens found OR first token of length zero */
-		return value_list_own(NULL, err_out);
+		err_t err = ERR_OK;
+		const value_t own res;
+
+		res = value_list_own(NULL, &err);
+		PTRY_FROM_WITH(err, NULL);
+		return res;
 	}
 
 	if (this->src[tok->offset] == '(') {
-		err_t err = ERR_OK;
+		perr_t err = PERR_OK;
+		err_t errt = ERR_OK;
 		const struct cell own list;
+		const value_t own res;
 
 		r_next(this); /* skip opening paren */
 		list = read_list(this, &err);
-		TRY_WITH(err, NULL);
-		return value_list_own(list, err_out);
+		PTRY_WITH(err, NULL);
+
+		res = value_list_own(list, &errt);
+		PTRY_FROM_WITH(errt, NULL);
+		return res;
 	} else {
 		return read_atom(this, err_out);
 	}
 }
 const value_t own
-read_str(const char ref str, err_t ref err_out)
+read_str(const char ref str, perr_t ref err_out)
 {
-	err_t err = ERR_OK;
+	perr_t err = PERR_OK;
+	err_t errt = ERR_OK;
 	struct token_arr arr;
 	struct reader own reader;
 	const value_t own res;
 
 	arr = tokenize(str, &err);
-	TRY_WITH(err, NULL);
+	PTRY_WITH(err, NULL);
 
-	reader = reader_new(str, arr, &err);
-	if (err != ERR_OK) {
+	reader = reader_new(str, arr, &errt);
+	if (errt != ERR_OK) {
 		token_arr_deinit(&arr);
-		ERR_WITH(err, NULL);
+		PERR_FROM_WITH(errt, NULL);
 	}
 
 	res = read_form(reader, &err);
 	reader_free(reader);
-	TRY_WITH(err, NULL);
+	PTRY_WITH(err, NULL);
 
 	return res;
 }
