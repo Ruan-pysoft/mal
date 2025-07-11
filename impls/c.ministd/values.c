@@ -178,6 +178,13 @@ value_str_own(const struct mal_string own str, err_t ref err_out)
 	return _value_new(VT_STR, val, err_out);
 }
 const value_t own
+value_key_own(const struct mal_string own key, err_t ref err_out)
+{
+	union value_union val;
+	val.key = key;
+	return _value_new(VT_KEY, val, err_out);
+}
+const value_t own
 value_list(const struct cell ref cell, err_t ref err_out)
 {
 	return value_list_own(cell_copy(cell), err_out);
@@ -214,6 +221,11 @@ value_str(const struct mal_string ref str, err_t ref err_out)
 	return value_str_own(mal_string_copy(str), err_out);
 }
 const value_t own
+value_key(const struct mal_string ref key, err_t ref err_out)
+{
+	return value_key_own(mal_string_copy(key), err_out);
+}
+const value_t own
 value_copy(const value_t ref this)
 {
 	++((value_t ref)this)->ref_count;
@@ -238,6 +250,9 @@ value_free(const value_t own this)
 			case VT_BOOL: break;
 			case VT_STR: {
 				mal_string_free(this->v.str);
+			break; }
+			case VT_KEY: {
+				mal_string_free(this->v.key);
 			break; }
 		}
 		free((own_ptr)this);

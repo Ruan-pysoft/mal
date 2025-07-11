@@ -66,6 +66,12 @@ pr_strval(const struct mal_string ref str, bool print_readably, FILE ref file,
 
 	fprints(str->data, file, err_out);
 }
+static void
+pr_key(const struct mal_string ref key, FILE ref file,
+	  err_t ref err_out)
+{
+	fprints(key->data, file, err_out);
+}
 
 static void
 pr_val(const value_t ref val, bool print_readably, FILE ref file,
@@ -89,6 +95,9 @@ pr_val(const value_t ref val, bool print_readably, FILE ref file,
 		break; }
 		case VT_STR: {
 			pr_strval(val->v.str, print_readably, file, err_out);
+		break; }
+		case VT_KEY: {
+			pr_key(val->v.key, file, err_out);
 		break; }
 	}
 }

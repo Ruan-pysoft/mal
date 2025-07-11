@@ -342,6 +342,17 @@ read_atom(struct reader ref this, perr_t ref err_out)
 		res = value_str_own(str, &err);
 		PTRY_FROM_WITH(err, NULL);
 		return res;
+	} else if (this->src[tok->offset] == ':') {
+		/* key */
+
+		const struct mal_string own key = mal_string_newn(
+			&this->src[tok->offset], tok->len, &err
+		);
+		PTRY_FROM_WITH(err, NULL);
+
+		res = value_key_own(key, &err);
+		PTRY_FROM_WITH(err, NULL);
+		return res;
 	} else {
 		/* symbol */
 
