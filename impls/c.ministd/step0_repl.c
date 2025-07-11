@@ -6,25 +6,25 @@
  * or I should just change read/write/close/etc
  * to file_read/file_write/file_close etc...
  */
-const char ref
+static const char ref
 READ(const char ref line)
 {
 	return line;
 }
 
-const char ref
+static const char ref
 EVAL(const char ref processed)
 {
 	return processed;
 }
 
-const char ref
+static const char ref
 PRINT(const char ref value)
 {
 	return value;
 }
 
-const char ref
+static const char ref
 rep(const char ref line)
 {
 	const char ref read_res;
@@ -39,7 +39,7 @@ rep(const char ref line)
 }
 
 #define LINECAP (16 * 1024)
-char linebuf[LINECAP];
+static char linebuf[LINECAP];
 
 int
 main(void)
