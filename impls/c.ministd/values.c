@@ -171,6 +171,13 @@ value_sym_own(const struct mal_string own sym, err_t ref err_out)
 	return _value_new(VT_SYM, val, err_out);
 }
 const value_t own
+value_str_own(const struct mal_string own str, err_t ref err_out)
+{
+	union value_union val;
+	val.str = str;
+	return _value_new(VT_STR, val, err_out);
+}
+const value_t own
 value_list(const struct cell ref cell, err_t ref err_out)
 {
 	return value_list_own(cell_copy(cell), err_out);
@@ -186,6 +193,25 @@ const value_t own
 value_sym(const struct mal_string ref sym, err_t ref err_out)
 {
 	return value_sym_own(mal_string_copy(sym), err_out);
+}
+const value_t own
+value_nil(err_t ref err_out)
+{
+	union value_union val;
+	memzero(&val, sizeof(val));
+	return _value_new(VT_NIL, val, err_out);
+}
+const value_t own
+value_bool(bool boo, err_t ref err_out)
+{
+	union value_union val;
+	val.boo = boo;
+	return _value_new(VT_BOOL, val, err_out);
+}
+const value_t own
+value_str(const struct mal_string ref str, err_t ref err_out)
+{
+	return value_str_own(mal_string_copy(str), err_out);
 }
 const value_t own
 value_copy(const value_t ref this)
@@ -204,10 +230,14 @@ value_free(const value_t own this)
 			case VT_LIST: {
 				cell_free(this->v.ls);
 			break; }
-			case VT_NUM: {
-			break; }
+			case VT_NUM: break;
 			case VT_SYM: {
 				mal_string_free(this->v.sym);
+			break; }
+			case VT_NIL: break;
+			case VT_BOOL: break;
+			case VT_STR: {
+				mal_string_free(this->v.str);
 			break; }
 		}
 		free((own_ptr)this);

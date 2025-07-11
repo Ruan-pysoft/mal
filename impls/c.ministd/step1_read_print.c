@@ -39,7 +39,7 @@ PRINT(const value_t own value)
 	err_t err = ERR_OK;
 	const char own str;
 
-	str = pr_str(value, &err);
+	str = pr_str(value, true, &err);
 	value_free(value);
 	if (err != ERR_OK) {
 		perror(err, "Encountered error while printing value");

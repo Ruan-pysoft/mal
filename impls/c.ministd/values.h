@@ -7,10 +7,11 @@
 enum value_type {
 	VT_LIST,
 	VT_NUM,
-	VT_SYM
+	VT_SYM,
+	VT_NIL,
+	VT_BOOL,
+	VT_STR
 
-	/* VT_BOOL */
-	/* VT_STR */
 	/* VT_KEY */
 };
 
@@ -71,15 +72,22 @@ typedef struct value_t {
 		const struct cell own ls;
 		int num;
 		const struct mal_string own sym;
+		bool boo;
+		const struct mal_string own str;
 	} v;
 	usz ref_count;
 } value_t;
 const value_t own value_list_own(const struct cell own cell, err_t ref err_out);
 const value_t own value_sym_own(const struct mal_string own sym,
 				err_t ref err_out);
+const value_t own value_str_own(const struct mal_string own str,
+				err_t ref err_out);
 const value_t own value_list(const struct cell ref cell, err_t ref err_out);
 const value_t own value_num(int num, err_t ref err_out);
 const value_t own value_sym(const struct mal_string ref sym, err_t ref err_out);
+const value_t own value_nil(err_t ref err_out);
+const value_t own value_bool(bool boo, err_t ref err_out);
+const value_t own value_str(const struct mal_string ref str, err_t ref err_out);
 const value_t own value_copy(const value_t ref this);
 void value_free(const value_t own this);
 

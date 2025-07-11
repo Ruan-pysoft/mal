@@ -34,6 +34,19 @@ special(char c) {
 	);
 }
 static bool
+match_token(const char ref src, const struct token ref tok, const char ref to)
+{
+	usz i;
+
+	if (strnlen(to, tok->len+1) != tok->len) return false;
+
+	for (i = 0; i < tok->len; ++i) {
+		if (src[tok->offset+i] != to[i]) return false;
+	}
+
+	return true;
+}
+static bool
 get_token(const char ref str, usz ref idx, struct token ref out)
 {
 	while (str[*idx] != 0 && (str[*idx] <= ' ' || str[*idx] == ',')) {
@@ -52,8 +65,28 @@ get_token(const char ref str, usz ref idx, struct token ref out)
 
 		return true;
 	} else if (str[*idx] == '"') {
-		/* TODO: string tokenisation */
-		return false;
+		usz len = 1;
+		bool escape = false;
+
+		while (str[*idx+len] != 0 && (escape ||
+				(str[*idx+len] != '"'
+				&& str[*idx+len] != '\n'))) {
+			escape = (str[*idx+len] == '\\');
+
+			++len;
+		}
+
+		if (str[*idx+len] == '"') ++len;
+		else {
+			fprints("ERROR: Unclosed string literal\n", stderr, NULL);
+		}
+
+		out->len = len;
+		out->offset = *idx;
+
+		*idx += len;
+
+		return true;
 	} else if (str[*idx] == ';') {
 		const usz len = strlen(&str[*idx]);
 		out->len = len;
@@ -183,7 +216,7 @@ read_list(struct reader ref this, err_t ref err_out)
 	tok = r_peek(this);
 	if (tok == NULL || tok->len == 0) {
 		/* no tokens found OR token of length zero */
-		fprints("ERROR: Unclosed list!", stderr, err_out);
+		fprints("ERROR: Unclosed list!\n", stderr, err_out);
 		return NULL;
 	}
 	if (this->src[tok->offset] == ')') {
@@ -220,7 +253,7 @@ read_list(struct reader ref this, err_t ref err_out)
 
 	if (tok == NULL || tok->len == 0) {
 		/* no tokens found OR token of length zero */
-		fprints("ERROR: Unclosed list!", stderr, err_out);
+		fprints("ERROR: Unclosed list!\n", stderr, err_out);
 	} else { /* closing paren */
 		r_next(this);
 	}
@@ -235,7 +268,7 @@ read_atom(struct reader ref this, err_t ref err_out)
 	if (tok == NULL || tok->len == 0) {
 		/* this should never happen */
 		fprints(
-			"ERROR: called `read_atom` at end of token stream!",
+			"ERROR: called `read_atom` at end of token stream!\n",
 			stderr,
 			err_out
 		);
@@ -254,7 +287,7 @@ read_atom(struct reader ref this, err_t ref err_out)
 
 			if ('0' > c || c > '9') {
 				fprints(
-					"ERROR: non-numeric character in numeric literal!",
+					"ERROR: non-numeric character in numeric literal!\n",
 					stderr,
 					&err
 				);
@@ -268,6 +301,24 @@ read_atom(struct reader ref this, err_t ref err_out)
 		}
 
 		return value_num(n, err_out);
+	} else if (match_token(this->src, tok, "nil")) {
+		return value_nil(err_out);
+	} else if (match_token(this->src, tok, "true")) {
+		return value_bool(true, err_out);
+	} else if (match_token(this->src, tok, "false")) {
+		return value_bool(false, err_out);
+	} else if (this->src[tok->offset] == '"') {
+		/* string */
+
+		/* TODO: actually parse the string */
+
+		err_t err = ERR_OK;
+		const struct mal_string own str = mal_string_newn(
+			&this->src[tok->offset], tok->len, &err
+		);
+		TRY_WITH(err, NULL);
+
+		return value_str_own(str, err_out);
 	} else {
 		/* symbol */
 
