@@ -171,6 +171,24 @@ eval_fn(const value_t own head, const struct cell own tail, env_t ref env,
 static const value_t own
 EVAL(const value_t own val, env_t ref env, rerr_t ref err_out)
 {
+	static const struct mal_string debug_key = {
+		"DEBUG-EVAL", 0
+	};
+	const value_t ref debug = env_get(env, &debug_key);
+	if (debug != NULL && debug->type != VT_NIL && (debug->type != VT_BOOL
+			|| debug->v.boo != false)) {
+		err_t err = ERR_OK;
+		const char own repr = pr_str(val, 1, &err);
+		RTRY_FROM_WITH(err, NULL);
+
+		fprints("EVAL: ", stderr, &err);
+		RTRY_FROM_WITH(err, NULL);
+		fprints(repr, stderr, &err);
+		RTRY_FROM_WITH(err, NULL);
+		fprintc('\n', stderr, &err);
+		RTRY_FROM_WITH(err, NULL);
+	}
+
 	switch (val->type) {
 		case VT_LIST: {
 			const value_t own head;
@@ -266,6 +284,12 @@ main(void)
 	const char own out;
 	env_t own repl_env = env_new(NULL);
 
+	env_add(
+		repl_env,
+		mal_string_new("DEBUG-EVAL", NULL),
+		value_nil(NULL),
+		NULL
+	);
 	env_add(
 		repl_env,
 		mal_string_new("+", NULL),
