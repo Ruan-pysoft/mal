@@ -1,4 +1,5 @@
 #include "printer.h"
+#include "values.h"
 
 #include <ministd_fmt.h>
 #include <ministd_memory.h>
@@ -72,6 +73,18 @@ pr_key(const struct mal_string ref key, FILE ref file,
 {
 	fprints(key->data, file, err_out);
 }
+static void
+pr_builtin(builtin_fn builtin, FILE ref file, err_t ref err_out)
+{
+	err_t err = ERR_OK;
+
+	fprints("[BUILTIN FN ", file, &err);
+	TRY_VOID(err);
+	fprintp(*(ptr ref)&builtin, file, &err);
+	TRY_VOID(err);
+	fprintc(']', file, &err);
+	TRY_VOID(err);
+}
 
 static void
 pr_val(const value_t ref val, bool print_readably, FILE ref file,
@@ -98,6 +111,9 @@ pr_val(const value_t ref val, bool print_readably, FILE ref file,
 		break; }
 		case VT_KEY: {
 			pr_key(val->v.key, file, err_out);
+		break; }
+		case VT_BUILTIN_FN: {
+			pr_builtin(val->v.builtin, file, err_out);
 		break; }
 	}
 }

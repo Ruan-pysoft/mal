@@ -226,6 +226,13 @@ value_key(const struct mal_string ref key, err_t ref err_out)
 	return value_key_own(mal_string_copy(key), err_out);
 }
 const value_t own
+value_builtin(builtin_fn builtin, err_t ref err_out)
+{
+	union value_union val;
+	val.builtin = builtin;
+	return _value_new(VT_BUILTIN_FN, val, err_out);
+}
+const value_t own
 value_copy(const value_t ref this)
 {
 	++((value_t ref)this)->ref_count;
@@ -254,6 +261,7 @@ value_free(const value_t own this)
 			case VT_KEY: {
 				mal_string_free(this->v.key);
 			break; }
+			case VT_BUILTIN_FN: break;
 		}
 		free((own_ptr)this);
 	}

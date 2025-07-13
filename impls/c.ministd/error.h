@@ -69,4 +69,71 @@ extern const perr_t PERR_OK;
 		} \
 	} while (0)
 
+enum rerr_type {
+	RT_OK,
+	RT_ERRT,
+	RT_NOT_FOUND,
+	RT_UNCALLABLE,
+	RT_ARG_MISMATCH
+};
+
+typedef struct rerr_t {
+	enum rerr_type type;
+	union rerr_union {
+		err_t errt;
+		const char ref msg;
+	} e;
+} rerr_t;
+
+void rerr_display(const rerr_t ref this, FILE ref file, err_t ref err_out);
+
+extern const rerr_t RERR_OK;
+
+#define RERR_WITH(rerr, val) do { \
+		if (err_out != NULL && err_out->type == RT_OK) { \
+			*err_out = (rerr); \
+		} \
+		return (val); \
+	} while (0)
+#define RERR_VOID(rerr) do { \
+		if (err_out != NULL && err_out->type == RT_OK) { \
+			*err_out = (rerr); \
+		} \
+		return; \
+	} while (0)
+#define RERR_FROM_WITH(err, val) do { \
+		if (err_out != NULL && err_out->type == RT_OK) { \
+			err_out->type = RT_ERRT; \
+			err_out->e.errt = (err); \
+		} \
+		return (val); \
+	} while (0)
+#define RERR_FROM_VOID(err) do { \
+		if (err_out != NULL && err_out->type == RT_OK) { \
+			err_out->type = RT_ERRT; \
+			err_out->e.errt = (err); \
+		} \
+		return; \
+	} while (0)
+#define RTRY_WITH(rerr, val) do { \
+		if ((rerr).type != RT_OK) { \
+			RERR_WITH(rerr, val); \
+		} \
+	} while (0)
+#define RTRY_VOID(rerr) do { \
+		if ((rerr).type != RT_OK) { \
+			RERR_VOID(rerr); \
+		} \
+	} while (0)
+#define RTRY_FROM_WITH(err, val) do { \
+		if (err != ERR_OK) { \
+			RERR_FROM_WITH(err, val); \
+		} \
+	} while (0)
+#define RTRY_FROM_VOID(err) do { \
+		if (err != ERR_OK) { \
+			RERR_FROM_VOID(err); \
+		} \
+	} while (0)
+
 #endif /* ERROR_H */

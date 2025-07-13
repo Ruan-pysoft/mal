@@ -11,7 +11,9 @@ enum value_type {
 	VT_NIL,
 	VT_BOOL,
 	VT_STR,
-	VT_KEY
+	VT_KEY,
+
+	VT_BUILTIN_FN
 };
 
 struct value_t;
@@ -65,6 +67,8 @@ const struct mal_string own mal_string_newn(const char ref cstr, usz len,
 const struct mal_string own mal_string_copy(const struct mal_string ref this);
 void mal_string_free(const struct mal_string own this);
 
+typedef int (ref builtin_fn)(int, int);
+
 typedef struct value_t {
 	enum value_type type;
 	union value_union {
@@ -74,6 +78,7 @@ typedef struct value_t {
 		bool boo;
 		const struct mal_string own str;
 		const struct mal_string own key;
+		builtin_fn builtin;
 	} v;
 	usz ref_count;
 } value_t;
@@ -91,6 +96,7 @@ const value_t own value_nil(err_t ref err_out);
 const value_t own value_bool(bool boo, err_t ref err_out);
 const value_t own value_str(const struct mal_string ref str, err_t ref err_out);
 const value_t own value_key(const struct mal_string ref key, err_t ref err_out);
+const value_t own value_builtin(builtin_fn builtin, err_t ref err_out);
 const value_t own value_copy(const value_t ref this);
 void value_free(const value_t own this);
 

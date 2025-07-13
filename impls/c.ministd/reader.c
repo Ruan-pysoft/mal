@@ -288,13 +288,17 @@ read_atom(struct reader ref this, perr_t ref err_out)
 		PTRY_FROM_WITH(err, NULL);
 	}
 
-	if ('0' <= this->src[tok->offset] && this->src[tok->offset] <= '9') {
+	if ((this->src[tok->offset] == '-' && '0' <= this->src[tok->offset+1]
+			&& this->src[tok->offset+1] <= '9')
+			|| ('0' <= this->src[tok->offset]
+			&& this->src[tok->offset] <= '9')) {
 		/* number */
 
+		bool neg = this->src[tok->offset] == '-';
 		int n = 0;
 		usz i;
 
-		for (i = 0; i < tok->len; ++i) {
+		for (i = neg ? 1 : 0; i < tok->len; ++i) {
 			const char c = this->src[tok->offset+i];
 
 			if ('0' > c || c > '9') {
@@ -314,7 +318,7 @@ read_atom(struct reader ref this, perr_t ref err_out)
 			n += c - '0';
 		}
 
-		res = value_num(n, &err);
+		res = value_num(neg ? -n : n, &err);
 		PTRY_FROM_WITH(err, NULL);
 		return res;
 	} else if (match_token(this->src, tok, "nil")) {
