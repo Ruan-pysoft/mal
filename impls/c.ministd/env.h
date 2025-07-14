@@ -7,14 +7,21 @@
 
 typedef struct mal_string key_t;
 
-void key_free(key_t own this);
-bool key_cmp(const key_t ref a, const key_t ref b);
-
 typedef struct env_t env_t;
+#ifndef FULL_ENV
 env_t own env_new(err_t ref err_out);
+#else
+env_t own env_new(const env_t own outer, err_t ref err_out);
+#endif
+env_t own env_copy(env_t ref this);
 void env_free(env_t own this);
+#ifndef FULL_ENV
 void env_add(env_t ref this, const key_t own key, const value_t own val,
 	     err_t ref err_out);
-const value_t ref env_get(env_t ref this, const key_t ref key);
+#else
+void env_set(env_t ref this, const key_t own key, const value_t own val,
+	     err_t ref err_out);
+#endif
+const value_t ref env_get(const env_t ref this, const key_t ref key);
 
 #endif /* ENV_H */

@@ -140,6 +140,33 @@ mal_string_free(const struct mal_string own this)
 		free((own_ptr)this);
 	}
 }
+enum cmp_res
+mal_string_cmp(const struct mal_string ref this,
+	       const struct mal_string ref other)
+{
+	usz i;
+	if (this == other) return CR_EQ;
+
+	for (i = 0; this->data[i] != 0 && other->data[i] != 0; ++i) {
+		if (this->data[i] < other->data[i]) return CR_LT;
+		if (this->data[i] > other->data[i]) return CR_GT;
+	}
+
+	return CR_EQ;
+}
+enum cmp_res
+mal_string_match(const struct mal_string ref this, const char ref to)
+{
+	usz i;
+	if (this->data == to) return CR_EQ;
+
+	for (i = 0; this->data[i] != 0 && to[i] != 0; ++i) {
+		if (this->data[i] < to[i]) return CR_LT;
+		if (this->data[i] > to[i]) return CR_GT;
+	}
+
+	return CR_EQ;
+}
 
 static value_t own
 _value_new(enum value_type type, union value_union val, err_t ref err_out)

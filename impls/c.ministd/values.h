@@ -4,6 +4,12 @@
 #include <ministd_error.h>
 #include <ministd_types.h>
 
+enum cmp_res {
+	CR_EQ,
+	CR_LT,
+	CR_GT
+};
+
 enum value_type {
 	VT_LIST,
 	VT_NUM,
@@ -66,6 +72,10 @@ const struct mal_string own mal_string_newn(const char ref cstr, usz len,
 					    err_t ref err_out);
 const struct mal_string own mal_string_copy(const struct mal_string ref this);
 void mal_string_free(const struct mal_string own this);
+enum cmp_res mal_string_cmp(const struct mal_string ref this,
+			    const struct mal_string ref other);
+enum cmp_res mal_string_match(const struct mal_string ref this,
+			      const char ref to);
 
 typedef int (ref builtin_fn)(int, int);
 
