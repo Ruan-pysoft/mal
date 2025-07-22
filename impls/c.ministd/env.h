@@ -1,27 +1,23 @@
 #ifndef ENV_H
 #define ENV_H
 
-#include <ministd_error.h>
+#include "error.h"
+#include "types.h"
 
-#include "values.h"
+/* new empty environment, outer can be NULL */
+MutEnv_own env_new(Env_own outer, err_t ref err_out);
+MutEnv_own env_copy(MutEnv_ref this);
+void env_free(Env_own this);
 
-typedef struct mal_string key_t;
-
-typedef struct env_t env_t;
-#ifndef FULL_ENV
-env_t own env_new(err_t ref err_out);
-#else
-env_t own env_new(const env_t own outer, err_t ref err_out);
-#endif
-env_t own env_copy(env_t ref this);
-void env_free(env_t own this);
-#ifndef FULL_ENV
-void env_add(env_t ref this, const key_t own key, const value_t own val,
-	     err_t ref err_out);
-#else
-void env_set(env_t ref this, const key_t own key, const value_t own val,
-	     err_t ref err_out);
-#endif
-const value_t ref env_get(const env_t ref this, const key_t ref key);
+/* no. of values in environment */
+usz env_size(Env_ref this);
+bool env_contains(Env_ref this, String_ref var);
+/* error with ERR_INVAL for !env_contains(this, var) */
+Value_ref env_get(Env_ref this, String_ref var, err_t ref err_out);
+void env_set(MutEnv_ref this, String_own var, Value_own val, err_t ref err_out);
+void env_extend(MutEnv_ref this, String_ref ref vars, Value_ref ref vals,
+		usz n_items, err_t ref err_out);
+void env_bind(MutEnv_ref this, String_ref ref arg_names, usz n_args,
+	      bool variadic, List_own arg_vals, rerr_t ref err_out);
 
 #endif /* ENV_H */

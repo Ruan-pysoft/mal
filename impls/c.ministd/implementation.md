@@ -75,8 +75,8 @@ All pass-by-value values should be copyable using simple assignment in c.
 For memory managed values, the following api should be used:
 
 ```c
-typedef struct Typename_struct own Typename_own;
-typedef struct Typename_struct ref Typename_ref;
+typedef const struct Typename_struct own Typename_own;
+typedef const struct Typename_struct ref Typename_ref;
 
 /* create a new value of type Typename;
  * an error may occur because of memory allocations.
@@ -85,6 +85,8 @@ typedef struct Typename_struct ref Typename_ref;
 Typename_own typename_new(..., err_t ref err_out);
 /* transform a reference to an owned pointer;
  * could also be used to clone an owned pointer
+ *
+ * essentially, just increment the reference count
  */
 Typename_own typename_copy(Typename_ref this);
 /* decrement the reference count, if it is zero release all resources;
@@ -94,6 +96,15 @@ Typename_own typename_copy(Typename_ref this);
 */
 void Typename_free(Typename_own this);
 ```
+
+Functions that can mutate such a value should have type
+`Typename_own _Typename_fn(struct Typename_struct own this, ..., err_t ref err_out)`,
+and should always start with an underscore to indicate that it is unsafe.
+These should only be used directly after the construction of a new value,
+and should exit with `ERR_PERM` if the reference count of the value is not one.
+It should return `this` on success,
+or `NULL` on failure,
+after freeing resources.
 
 # Memory management model
 
