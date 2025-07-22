@@ -85,6 +85,7 @@ rerr_t rerr_arg_type_mismatch(const struct Value_struct ref arg, usz argnum,
 rerr_t rerr_uncallable(const char ref type);
 struct String_struct;
 rerr_t rerr_undefined_name(const struct String_struct ref name);
+rerr_t rerr_msg(const char ref msg);
 
 extern const rerr_t RERR_OK;
 

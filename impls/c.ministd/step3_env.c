@@ -3,391 +3,360 @@
 #include <ministd_fmt.h>
 #include <ministd_memory.h>
 
-#ifndef FULL_ENV
-#define FULL_ENV
-#endif
 #include "env.h"
 #include "error.h"
 #include "printer.h"
 #include "reader.h"
 #include "values.h"
 
+static Value_own EVAL(Value_own val, MutEnv_ref env, rerr_t ref err_out);
+Value_own (ref fn_EVAL)(Value_own expr, MutEnv_ref env, rerr_t ref err_out)
+	= EVAL;
+
 /* `read` is a function in `ministd_fmt.h`...
  * I should either add optional prefixes to all ministd functions,
  * or I should just change read/write/close/etc
  * to file_read/file_write/file_close etc...
  */
-static const value_t own
+static Value_own
 READ(const char ref line)
 {
 	perr_t err = PERR_OK;
-	const value_t own val;
+	Value_own val;
 
 	val = read_str(line, &err);
-	if (err.type != PT_OK) {
+	if (!perr_is_ok(err)) {
 		perr_display(&err, stderr, NULL);
 		fprintc('\n', stderr, NULL);
+		perr_deinit(err);
 		return NULL;
 	}
 
 	return val;
 }
 
-static const value_t own EVAL(const value_t own val, env_t ref env,
-			      rerr_t ref err_out);
-static void
-bind(env_t ref this, const struct cell own bindings, rerr_t ref err_out)
+static List_own
+eval_each(List_ref list, MutEnv_ref env, rerr_t ref err_out)
 {
 	rerr_t err = RERR_OK;
-	err_t errt = ERR_OK;
-	const struct cell own old;
-	const value_t own name;
-	const value_t own value;
+	List_iter at;
+	struct List_struct own res;
 
-	while (bindings != NULL) {
-		if (bindings->next == NULL) {
-			cell_free(bindings);
+	res = (struct List_struct own)list_new(NULL, 0, &err.e.errt);
+	RTRY_WITH(err, NULL);
 
-			err.type = RT_ARG_MISMATCH;
-			err.e.msg = ": let*'s binding list must have an even number of arguments!";
-			RERR_VOID(err);
-		}
+	for (at = list_iter(list); !list_isend(at); at = list_next(at)) {
+		Value_own val;
 
-		name = value_copy(bindings->val);
-		if (name->type != VT_SYM) {
-			cell_free(bindings);
-
-			err.type = RT_ARG_MISMATCH;
-			err.e.msg = ": every odd element of let*'s binding list must be a symbol!";
-			RERR_VOID(err);
-		}
-		value = EVAL(value_copy(bindings->next->val), this, &err);
-		if (err.type != RT_OK) {
-			cell_free(bindings);
-			value_free(name);
-			RERR_VOID(err);
-		}
-
-		env_set(this, name->v.sym, value, &errt);
-		if (errt != ERR_OK) {
-			cell_free(bindings);
-			RERR_FROM_VOID(errt);
-		}
-
-		old = bindings;
-		bindings = cell_copy(old->next->next);
-		cell_free(old);
-	}
-}
-static const struct cell own
-eval_ls(const struct cell own ls, env_t ref env, usz ref len,
-	rerr_t ref err_out)
-{
-	rerr_t err = RERR_OK;
-	err_t errt = ERR_OK;
-	const struct cell own res = NULL;
-	const struct cell own old;
-	const struct cell ref last;
-	const value_t own val;
-
-	if (ls == NULL) return NULL;
-
-	val = EVAL(value_copy(ls->val), env, &err);
-	if (err.type != RT_OK) {
-		cell_free(ls);
-		RERR_WITH(err, NULL);
-	}
-	res = cell_new_own(val, &errt);
-	if (errt != ERR_OK) {
-		cell_free(ls);
-		RERR_FROM_WITH(errt, NULL);
-	}
-	last = res;
-	*len = 1;
-
-	old = ls;
-	ls = cell_copy(old->next);
-	cell_free(old);
-
-	while (ls != NULL) {
-		val = EVAL(value_copy(ls->val), env, &err);
-		if (err.type != RT_OK) {
-			cell_free(ls);
-			cell_free(res);
+		val = EVAL(value_copy(list_at(at, NULL)), env, &err);
+		if (!rerr_is_ok(err)) {
+			list_free(res);
 			RERR_WITH(err, NULL);
 		}
-		_cell_unsafe_append((ptr)last, val, &errt);
-		if (errt != ERR_OK) {
-			cell_free(ls);
-			cell_free(res);
-			RERR_FROM_WITH(errt, NULL);
-		}
-		last = cell_tail(last);
-		++*len;
 
-		old = ls;
-		ls = cell_copy(old->next);
-		cell_free(old);
+		res = (struct List_struct own)_list_append(
+			res,
+			val,
+			&err.e.errt
+		);
+		RTRY_WITH(err, NULL);
 	}
 
 	return res;
 }
-static const value_t own
-eval_fn(const value_t own head, const struct cell own tail, env_t ref env,
-	rerr_t ref err_out)
+static Value_own
+eval_fn(Value_own head, List_own args, MutEnv_ref env, rerr_t ref err_out)
 {
 	rerr_t err = RERR_OK;
-	err_t errt = ERR_OK;
-	const value_t own fn;
+	Value_own fn;
+	List_own evald_args;
 
 	fn = EVAL(head, env, &err);
-	if (err.type != RT_OK) {
-		cell_free(tail);
+	if (!rerr_is_ok(err)) {
+		list_free(args);
+		RERR_WITH(err, NULL);
+	}
+	evald_args = eval_each(args, env, &err);
+	if (!rerr_is_ok(err)) {
+		list_free(args);
+		value_free(fn);
 		RERR_WITH(err, NULL);
 	}
 
-	switch (fn->type) {
-		case VT_LIST: {
-			err.type = RT_UNCALLABLE;
-			err.e.msg = ": Lists aren't callable";
-			ERR_WITH(err, NULL);
-		break; }
+	switch (value_type(fn)) {
 		case VT_SYM: {
-			err.type = RT_UNCALLABLE;
-			err.e.msg = ": Symbols aren't callable";
+			err = rerr_uncallable("symbol");
 			ERR_WITH(err, NULL);
 		break; }
 		case VT_NUM: {
-			err.type = RT_UNCALLABLE;
-			err.e.msg = ": Numbers aren't callable";
+			err = rerr_uncallable("number");
 			ERR_WITH(err, NULL);
 		break; }
-		case VT_NIL: {
-			err.type = RT_UNCALLABLE;
-			err.e.msg = ": Nil isn't callable";
-			ERR_WITH(err, NULL);
-		break; }
-		case VT_BOOL: {
-			err.type = RT_UNCALLABLE;
-			err.e.msg = ": Booleans aren't callable";
+		case VT_LST: {
+			err = rerr_uncallable("list");
 			ERR_WITH(err, NULL);
 		break; }
 		case VT_STR: {
-			err.type = RT_UNCALLABLE;
-			err.e.msg = ": Strings aren't callable";
+			err = rerr_uncallable("string");
+			ERR_WITH(err, NULL);
+		break; }
+		case VT_NIL: {
+			err = rerr_uncallable("nil");
+			ERR_WITH(err, NULL);
+		break; }
+		case VT_BOO: {
+			err = rerr_uncallable("bool");
 			ERR_WITH(err, NULL);
 		break; }
 		case VT_KEY: {
-			err.type = RT_UNCALLABLE;
-			err.e.msg = ": Keys aren't callable";
+			err = rerr_uncallable("keyword");
 			ERR_WITH(err, NULL);
 		break; }
-		case VT_BUILTIN_FN: {
-			const struct cell own args = NULL;
-			usz arg_count = 0;
-			int res;
-			const value_t own val;
-
-			args = eval_ls(tail, env, &arg_count, &err);
-			if (err.type != RT_OK) {
-				value_free(fn);
-				RERR_WITH(err, NULL);
-			}
-
-			if (arg_count != 2) {
-				value_free(fn);
-				cell_free(args);
-
-				err.type = RT_ARG_MISMATCH;
-				err.e.msg = ": Builtin functions only take two arguments!";
-				RERR_WITH(err, NULL);
-			}
-			if (args->val->type != VT_NUM || args->next->val->type != VT_NUM) {
-				value_free(fn);
-				cell_free(args);
-
-				err.type = RT_ARG_MISMATCH;
-				err.e.msg = ": Builtin functions only take numeric arguments!";
-				ERR_WITH(err, NULL);
-			}
-
-			res = fn->v.builtin(
-				args->val->v.num,
-				args->next->val->v.num
-			);
-
-			val = value_num(res, &errt);
+		case VT_VEC: {
+			err = rerr_uncallable("vector");
+			ERR_WITH(err, NULL);
+		break; }
+		case VT_MAP: {
+			err = rerr_uncallable("hash-map");
+			ERR_WITH(err, NULL);
+		break; }
+		case VT_FNC: {
+			Value_own res;
+			res = fn_call(value_getfn(fn, NULL), evald_args, &err);
 			value_free(fn);
-			cell_free(args);
-			RTRY_FROM_WITH(errt, NULL);
-			return val;
+			RTRY_WITH(err, NULL);
+			return res;
 		break; }
 	}
 
 	return NULL;
 }
 
-static const value_t own
-eval_def(const struct cell own tail, env_t ref env, rerr_t ref err_out)
+static Value_own
+eval_def(List_own args, MutEnv_ref env, rerr_t ref err_out)
 {
-	err_t errt = ERR_OK;
 	rerr_t err = RERR_OK;
-	const value_t own fst;
-	const value_t own scd;
+	Value_ref name, value;
 
-	if (tail == NULL || tail->next == NULL || tail->next->next != NULL) {
-		cell_free(tail);
-
-		err.type = RT_ARG_MISMATCH;
-		err.e.msg = ": def! only takes two arguments!";
+	if (list_len(args) != 2) {
+		err = rerr_arg_len_mismatch(2, list_len(args));
+		list_free(args);
 		RERR_WITH(err, NULL);
 	}
 
-	fst = value_copy(tail->val);
-	scd = value_copy(tail->next->val);
-	cell_free(tail);
-	if (fst->type != VT_SYM) {
-		value_free(fst);
-		value_free(scd);
-
-		err.type = RT_ARG_MISMATCH;
-		err.e.msg = ": def!'s first argument must be a symbol!";
+	name = value_copy(list_nth(args, 0, NULL));
+	value = value_copy(list_nth(args, 1, NULL));
+	list_free(args);
+	if (!value_issymbol(name)) {
+		err = rerr_arg_type_mismatch(name, 1, "symbol");
+		value_free(name);
+		value_free(value);
 		RERR_WITH(err, NULL);
 	}
 
-	scd = EVAL(scd, env, &err);
-	if (err.type != RT_OK) {
-		value_free(fst);
+	value = EVAL(value, env, &err);
+	if (!rerr_is_ok(err)) {
+		value_free(name);
 		RERR_WITH(err, NULL);
 	}
 
 	env_set(
 		env,
-		mal_string_copy(fst->v.sym),
-		value_copy(scd),
-		&errt
+		string_copy(value_getsymbol(name, NULL)),
+		value_copy(value),
+		&err.e.errt
 	);
-	value_free(fst);
-	if (errt != ERR_OK) {
-		value_free(scd);
-		RERR_FROM_WITH(errt, NULL);
+	value_free(name);
+	if (!rerr_is_ok(err)) {
+		value_free(value);
+		RERR_WITH(err, NULL);
 	}
 
-	return scd;
+	return value;
 }
-static const value_t own
-eval_let(const struct cell own tail, const env_t ref env, rerr_t ref err_out)
+static Value_own
+eval_let(List_own args, MutEnv_ref env, rerr_t ref err_out)
 {
-	err_t errt = ERR_OK;
 	rerr_t err = RERR_OK;
-	const value_t own bindings;
-	const value_t own expr;
-	env_t own subenv;
+	Value_own bindings, expr;
+	List_ref lbindings;
+	MutEnv_own subenv;
+	usz i;
 
-	if (tail == NULL || tail->next == NULL || tail->next->next != NULL) {
-		cell_free(tail);
-
-		err.type = RT_ARG_MISMATCH;
-		err.e.msg = ": let* only takes two arguments!";
+	if (list_len(args) != 2) {
+		err = rerr_arg_len_mismatch(2, list_len(args));
+		list_free(args);
 		RERR_WITH(err, NULL);
 	}
 
-	bindings = value_copy(tail->val);
-	expr = value_copy(tail->next->val);
-	cell_free(tail);
-	if (bindings->type != VT_LIST) {
+	bindings = value_copy(list_nth(args, 0, NULL));
+	expr = value_copy(list_nth(args, 1, NULL));
+	list_free(args);
+	if (!value_islist(bindings)) {
+		err = rerr_arg_type_mismatch(bindings, 1, "list");
 		value_free(bindings);
 		value_free(expr);
-
-		err.type = RT_ARG_MISMATCH;
-		err.e.msg = ": let*'s first argument must be a bindings list!";
 		RERR_WITH(err, NULL);
 	}
+	lbindings = value_getlist(bindings, NULL);
 
-	subenv = env_new(env, &errt);
-	if (errt != ERR_OK) {
+	if (list_len(lbindings)%2 != 0) {
 		value_free(bindings);
 		value_free(expr);
-
-		RERR_FROM_WITH(errt, NULL);
-	}
-
-	bind(subenv, bindings->v.ls, &err);
-	if (err.type != RT_OK) {
-		value_free(expr);
-		env_free(subenv);
-
+		err = rerr_msg("let* expected an even number of elements in the bind list, got an odd number");
 		RERR_WITH(err, NULL);
 	}
+
+	subenv = env_new(env, &err.e.errt);
+	if (!rerr_is_ok(err)) {
+		value_free(bindings);
+		value_free(expr);
+		ERR_WITH(err, NULL);
+	}
+
+	for (i = 0; i < list_len(lbindings)/2; ++i) {
+		Value_ref key, val;
+		Value_own evald;
+
+		key = list_nth(lbindings, i*2, NULL);
+		val = list_nth(lbindings, i*2 + 1, NULL);
+
+		if (!value_issymbol(key)) {
+			err = rerr_arg_type_mismatch(key, i*2, "symbol");
+			value_free(bindings);
+			value_free(expr);
+			env_free(subenv);
+			ERR_WITH(err, NULL);
+		}
+
+		evald = EVAL(value_copy(val), subenv, &err);
+		if (!rerr_is_ok(err)) {
+			value_free(bindings);
+			value_free(expr);
+			env_free(subenv);
+			ERR_WITH(err, NULL);
+		}
+
+		env_set(
+			subenv,
+			string_copy(value_getsymbol(key, NULL)),
+			evald,
+			&err.e.errt
+		);
+		if (!rerr_is_ok(err)) {
+			value_free(bindings);
+			value_free(expr);
+			env_free(subenv);
+			ERR_WITH(err, NULL);
+		}
+	}
+
+	value_free(bindings);
 
 	return EVAL(expr, subenv, err_out);
 }
 
-static const value_t own
-EVAL(const value_t own val, env_t ref env, rerr_t ref err_out)
+static Value_own
+EVAL(Value_own val, MutEnv_ref env, rerr_t ref err_out)
 {
-	static const struct mal_string debug_key = {
-		"DEBUG-EVAL", 0
-	};
-	const value_t ref debug = env_get(env, &debug_key);
-	if (debug != NULL && debug->type != VT_NIL && (debug->type != VT_BOOL
-			|| debug->v.boo != false)) {
-		err_t err = ERR_OK;
-		const char own repr = pr_str(val, 1, &err);
-		RTRY_FROM_WITH(err, NULL);
+	rerr_t err = RERR_OK;
+	static String_own debug_key = NULL;
+	Value_own debug;
 
-		fprints("EVAL: ", stderr, &err);
-		RTRY_FROM_WITH(err, NULL);
-		fprints(repr, stderr, &err);
-		RTRY_FROM_WITH(err, NULL);
-		fprintc('\n', stderr, &err);
-		RTRY_FROM_WITH(err, NULL);
+	if (debug_key == NULL) {
+		debug_key = string_new("DEBUG-EVAL", NULL);
+	}
+	debug = env_get(env, debug_key, &err.e.errt);
+	if (!rerr_is_ok(err)) {
+		value_free(val);
+		ERR_WITH(err, NULL);
+	}
+	if (debug != NULL && !value_isnil(debug) && (!value_isbool(debug)
+			|| value_getbool(debug, NULL))) {
+		const char own repr = pr_str(val, 1, &err.e.errt);
+		if (!rerr_is_ok(err)) {
+			value_free(val);
+			ERR_WITH(err, NULL);
+		}
+
+		fprints("EVAL: ", stderr, &err.e.errt);
+		if (!rerr_is_ok(err)) {
+			value_free(val);
+			ERR_WITH(err, NULL);
+		}
+		fprints(repr, stderr, &err.e.errt);
+		if (!rerr_is_ok(err)) {
+			value_free(val);
+			ERR_WITH(err, NULL);
+		}
+		fprintc('\n', stderr, &err.e.errt);
+		if (!rerr_is_ok(err)) {
+			value_free(val);
+			ERR_WITH(err, NULL);
+		}
 	}
 
-	switch (val->type) {
-		case VT_LIST: {
-			const value_t own head;
-			const struct cell own tail;
-			if (val->v.ls == NULL) {
-				return val;
-			}
-			head = value_copy(val->v.ls->val);
-			tail = cell_copy(val->v.ls->next);
+	if (value_islist(val)) {
+		List_ref list = value_getlist(val, NULL);
+		Value_own head;
+		List_own tail;
 
+		if (list_len(list) == 0) {
+			return val;
+		}
+		head = value_copy(list_nth(list, 0, &err.e.errt));
+		if (!rerr_is_ok(err)) {
 			value_free(val);
-
-			if (head->type == VT_SYM) {
-				if (mal_string_match(head->v.sym, "def!") == CR_EQ) {
-					value_free(head);
-
-					return eval_def(tail, env, err_out);
-				} else if (mal_string_match(head->v.sym, "let*") == CR_EQ) {
-					value_free(head);
-
-					return eval_let(tail, env, err_out);
-				}
-			}
-
-			return eval_fn(head, tail, env, err_out);
-		break; }
-		case VT_SYM: {
-			const value_t ref res = env_get(env, val->v.sym);
+			ERR_WITH(err, NULL);
+		}
+		tail = list_tail(list, 1, &err.e.errt);
+		if (!rerr_is_ok(err)) {
 			value_free(val);
-			if (res == NULL) {
-				rerr_t err = RERR_OK;
-				err.type = RT_NOT_FOUND;
-				err.e.msg = "";
-				RERR_WITH(err, NULL);
-			} else {
-				return value_copy(res);
+			value_free(head);
+			ERR_WITH(err, NULL);
+		}
+
+		value_free(val);
+
+		if (value_issymbol(head)) {
+			String_ref fnname = value_getsymbol(head, NULL);
+			if (string_match(fnname, "def!") == C_EQ) {
+				value_free(head);
+
+				return eval_def(tail, env, err_out);
+			} else if (string_match(fnname, "let*") == C_EQ) {
+				value_free(head);
+
+				return eval_let(tail, env, err_out);
 			}
-		break; }
-		default: return val;
+		}
+
+		return eval_fn(head, tail, env, err_out);
+	} else if (value_issymbol(val)) {
+		Value_ref res = env_get(
+			env,
+			value_getsymbol(val, NULL),
+			&err.e.errt
+		);
+		if (err.is_errt && err.e.errt == ERR_INVAL) {
+			/* symbol not in env */
+			err = rerr_undefined_name(value_getsymbol(val, NULL));
+			value_free(val);
+			ERR_WITH(err, NULL);
+		} else if (!rerr_is_ok(err)) {
+			value_free(val);
+			ERR_WITH(err, NULL);
+		}
+		value_free(val);
+
+		return value_copy(res);
+	} else {
+		return val;
 	}
 }
 
 static const char own
-PRINT(const value_t own value)
+PRINT(Value_own value)
 {
 	err_t err = ERR_OK;
 	const char own str;
@@ -403,10 +372,10 @@ PRINT(const value_t own value)
 }
 
 static const char own
-rep(const char ref line, env_t ref env)
+rep(const char ref line, MutEnv_ref env)
 {
-	const value_t own read_res;
-	const value_t own eval_res;
+	Value_own read_res;
+	Value_own eval_res;
 	const char own print_res;
 
 	read_res = READ(line);
@@ -414,9 +383,10 @@ rep(const char ref line, env_t ref env)
 		rerr_t err = RERR_OK;
 
 		eval_res = EVAL(read_res, env, &err);
-		if (err.type != RT_OK) {
+		if (!rerr_is_ok(err)) {
 			rerr_display(&err, stderr, NULL);
 			fprintc('\n', stderr, NULL);
+			rerr_deinit(err);
 
 			return NULL;
 		} else if (eval_res == NULL) {
@@ -434,53 +404,96 @@ rep(const char ref line, env_t ref env)
 #define LINECAP (16 * 1024)
 static char linebuf[LINECAP];
 
-int
-op_add(int a, int b)
-{ return a+b; }
-int
-op_sub(int a, int b)
-{ return a-b; }
-int
-op_mul(int a, int b)
-{ return a*b; }
-int
-op_div(int a, int b)
-{ return a/b; }
+#define ARYTH_OP(op) do { \
+		rerr_t err = RERR_OK; \
+		Value_ref a, b; \
+		Value_own res; \
+		int na, nb, nres; \
+		if (list_len(args) != 2) { \
+			err = rerr_arg_len_mismatch(2, list_len(args)); \
+			list_free(args); \
+			RERR_WITH(err, NULL); \
+		} \
+		a = list_nth(args, 0, NULL); \
+		b = list_nth(args, 1, NULL); \
+		if (!value_isnumber(a)) { \
+			err = rerr_arg_type_mismatch(a, 1, "number"); \
+			list_free(args); \
+			RERR_WITH(err, NULL); \
+		} \
+		if (!value_isnumber(b)) { \
+			err = rerr_arg_type_mismatch(a, 2, "number"); \
+			list_free(args); \
+			RERR_WITH(err, NULL); \
+		} \
+		na = value_getnumber(a, NULL); \
+		nb = value_getnumber(b, NULL); \
+		nres = na op nb; \
+		list_free(args); \
+		res = value_number(nres, &err.e.errt); \
+		RTRY_WITH(err, NULL); \
+		return res; \
+	} while (0)
+
+Value_own
+op_add(List_own args, MutEnv_ref env, rerr_t ref err_out)
+{
+	(void)env;
+	ARYTH_OP(+);
+}
+Value_own
+op_sub(List_own args, MutEnv_ref env, rerr_t ref err_out)
+{
+	(void)env;
+	ARYTH_OP(-);
+}
+Value_own
+op_mul(List_own args, MutEnv_ref env, rerr_t ref err_out)
+{
+	(void)env;
+	ARYTH_OP(*);
+}
+Value_own
+op_div(List_own args, MutEnv_ref env, rerr_t ref err_out)
+{
+	(void)env;
+	ARYTH_OP(/);
+}
 
 int
 main(void)
 {
 	const char own out;
-	env_t own repl_env = env_new(NULL, NULL);
+	MutEnv_own repl_env = env_new(NULL, NULL);
 
 	env_set(
 		repl_env,
-		mal_string_new("DEBUG-EVAL", NULL),
+		string_new("DEBUG-EVAL", NULL),
 		value_bool(true, NULL),
 		NULL
 	);
 	env_set(
 		repl_env,
-		mal_string_new("+", NULL),
-		value_builtin(op_add, NULL),
+		string_new("+", NULL),
+		value_fn(fn_builtin(op_add, NULL, NULL), NULL),
 		NULL
 	);
 	env_set(
 		repl_env,
-		mal_string_new("-", NULL),
-		value_builtin(op_sub, NULL),
+		string_new("-", NULL),
+		value_fn(fn_builtin(op_sub, NULL, NULL), NULL),
 		NULL
 	);
 	env_set(
 		repl_env,
-		mal_string_new("*", NULL),
-		value_builtin(op_mul, NULL),
+		string_new("*", NULL),
+		value_fn(fn_builtin(op_mul, NULL, NULL), NULL),
 		NULL
 	);
 	env_set(
 		repl_env,
-		mal_string_new("/", NULL),
-		value_builtin(op_div, NULL),
+		string_new("/", NULL),
+		value_fn(fn_builtin(op_div, NULL, NULL), NULL),
 		NULL
 	);
 

@@ -117,6 +117,19 @@ string_cmp(String_ref this, String_ref other)
 
 	return C_EQ;
 }
+enum CMP
+string_match(String_ref this, const char ref to)
+{
+	usz i;
+	const usz len = strnlen(to, this->len + 1);
+
+	for (i = 0; i < len; ++i) {
+		if (this->content[i] < to[i]) return C_LT;
+		else if (this->content[i] > to[i]) return C_GT;
+	}
+
+	return C_EQ;
+}
 const char ref
 string_cstr(String_ref this)
 {

@@ -41,6 +41,7 @@ const char ref string_cstr(String_ref this);
 /* equality checking can implement some optimisations that comparison cannot */
 bool string_iseq(String_ref this, String_ref other);
 enum CMP string_cmp(String_ref this, String_ref other);
+enum CMP string_match(String_ref this, const char ref to);
 String_own _string_append(struct String_struct own this, const char ref cstr,
 			  err_t ref err_out);
 

@@ -66,8 +66,7 @@ eval_each(List_ref list, MutEnv_ref env, rerr_t ref err_out)
 	return res;
 }
 static Value_own
-eval_fn(Value_own head, List_own args, MutEnv_ref env,
-	rerr_t ref err_out)
+eval_fn(Value_own head, List_own args, MutEnv_ref env, rerr_t ref err_out)
 {
 	rerr_t err = RERR_OK;
 	Value_own fn;

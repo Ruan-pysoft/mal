@@ -440,21 +440,21 @@ rerr_undefined_name(String_ref name)
 		return res;
 	}
 
-	fprints("Name ", file, &res.e.errt);
+	fprints("Name '", file, &res.e.errt);
 	if (!rerr_is_ok(res)) {
 		close(file, NULL);
 		free(file);
 		s_free(str);
 		return res;
 	}
-	string_print(name, true, file, &res.e.errt);
+	string_print(name, false, file, &res.e.errt);
 	if (!rerr_is_ok(res)) {
 		close(file, NULL);
 		free(file);
 		s_free(str);
 		return res;
 	}
-	fprints(" is undefined", file, &res.e.errt);
+	fprints("' not found", file, &res.e.errt);
 	if (!rerr_is_ok(res)) {
 		close(file, NULL);
 		free(file);
@@ -480,5 +480,20 @@ rerr_undefined_name(String_ref name)
 	res.e.msg = cstr;
 
 	s_free(str);
+	return res;
+}
+rerr_t
+rerr_msg(const char ref msg)
+{
+	char own cstr;
+	rerr_t res = RERR_OK;
+
+	cstr = nalloc(sizeof(char), strlen(msg)+1, &res.e.errt);
+	if (!rerr_is_ok(res)) return res;
+	memmove(cstr, msg, sizeof(char) * (strlen(msg)+1));
+
+	res.is_errt = false;
+	res.e.msg = cstr;
+
 	return res;
 }
