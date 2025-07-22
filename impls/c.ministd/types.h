@@ -131,9 +131,9 @@ typedef const struct Fn_struct ref Fn_ref;
 /* functions are either builtin functions or a mal function
  * the environment *can* be NULL, to create a non-closure function
  */
-typedef Value_own (ref builtin_fn)(List_own args, MutEnv_own env,
+typedef Value_own (ref builtin_fn)(List_own args, MutEnv_ref env,
 				   rerr_t ref err_out);
-Fn_own fn_from_builtin_fn(builtin_fn fn, Env_own env, err_t ref err_out);
+Fn_own fn_builtin(builtin_fn fn, Env_own env, err_t ref err_out);
 Fn_own fn_new(Value_own body, String_own own args, usz n_args, bool variadic,
 	      Env_own env, err_t ref err_out);
 Fn_own fn_copy(Fn_ref this);

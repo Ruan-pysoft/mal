@@ -79,6 +79,12 @@ void rerr_deinit(rerr_t this);
 bool rerr_is_ok(rerr_t this);
 rerr_t rerr_arg_len_mismatch(usz expected, usz got);
 rerr_t rerr_arg_vararg_mismatch(usz minimum, usz got);
+struct Value_struct;
+rerr_t rerr_arg_type_mismatch(const struct Value_struct ref arg, usz argnum,
+			      const char ref expected_type);
+rerr_t rerr_uncallable(const char ref type);
+struct String_struct;
+rerr_t rerr_undefined_name(const struct String_struct ref name);
 
 extern const rerr_t RERR_OK;
 

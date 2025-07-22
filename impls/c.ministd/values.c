@@ -3,19 +3,6 @@
 #include <ministd_fmt.h>
 #include <ministd_memory.h>
 
-enum Value_type {
-	VT_SYM,
-	VT_NUM,
-	VT_LST,
-	VT_STR,
-	VT_NIL,
-	VT_BOO,
-	VT_KEY,
-	VT_VEC,
-	VT_MAP,
-	VT_FNC
-};
-
 struct Value_struct {
 	enum Value_type type;
 	union Value_union {
@@ -259,6 +246,11 @@ value_print(Value_ref this, bool repr, FILE ref file, err_t ref err_out)
 			fn_print(this->v.fnc, file, err_out);
 		break; }
 	}
+}
+enum Value_type
+value_type(Value_ref this)
+{
+	return this->type;
 }
 bool
 value_issymbol(Value_ref this)

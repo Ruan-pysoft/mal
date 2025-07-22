@@ -828,7 +828,7 @@ struct Fn_struct {
 	usz ref_count;
 };
 Fn_own
-fn_from_builtin_fn(builtin_fn fn, Env_own env, err_t ref err_out)
+fn_builtin(builtin_fn fn, Env_own env, err_t ref err_out)
 {
 	err_t err = ERR_OK;
 	struct Fn_struct own res;

@@ -4,6 +4,8 @@
 #include <ministd_memory.h>
 #include <ministd_string.h>
 
+#include "values.h"
+
 const perr_t PERR_OK = {
 	true,
 	{ ERR_OK },
@@ -248,6 +250,211 @@ rerr_arg_vararg_mismatch(usz minimum, usz got)
 		return res;
 	}
 	fprinti(got, file, &res.e.errt);
+	if (!rerr_is_ok(res)) {
+		close(file, NULL);
+		free(file);
+		s_free(str);
+		return res;
+	}
+
+	close(file, &res.e.errt);
+	free(file);
+	if (!rerr_is_ok(res)) {
+		s_free(str);
+		return res;
+	}
+
+	cstr = nalloc(sizeof(char), s_len(str)+1, &res.e.errt);
+	if (!rerr_is_ok(res)) {
+		s_free(str);
+		return res;
+	}
+	memmove(cstr, s_to_c(str), sizeof(char) * (s_len(str)+1));
+
+	res.is_errt = false;
+	res.e.msg = cstr;
+
+	s_free(str);
+	return res;
+}
+rerr_t
+rerr_arg_type_mismatch(Value_ref arg, usz argnum, const char ref expected_type)
+{
+	String own str;
+	FILE own file;
+	char own cstr;
+	rerr_t res = RERR_OK;
+
+	str = s_new(&res.e.errt);
+	if (!rerr_is_ok(res)) return res;
+	file = (FILE own)sf_open(str, &res.e.errt);
+	if (!rerr_is_ok(res)) {
+		close(file, NULL);
+		free(file);
+		return res;
+	}
+
+	fprints("Argument type mismatch at argument #", file, &res.e.errt);
+	if (!rerr_is_ok(res)) {
+		close(file, NULL);
+		free(file);
+		s_free(str);
+		return res;
+	}
+	fprintuz(argnum, file, &res.e.errt);
+	if (!rerr_is_ok(res)) {
+		close(file, NULL);
+		free(file);
+		s_free(str);
+		return res;
+	}
+	fprintc('(', file, &res.e.errt);
+	if (!rerr_is_ok(res)) {
+		close(file, NULL);
+		free(file);
+		s_free(str);
+		return res;
+	}
+	value_print(arg, true, file, &res.e.errt);
+	if (!rerr_is_ok(res)) {
+		close(file, NULL);
+		free(file);
+		s_free(str);
+		return res;
+	}
+	fprintc(')', file, &res.e.errt);
+	if (!rerr_is_ok(res)) {
+		close(file, NULL);
+		free(file);
+		s_free(str);
+		return res;
+	}
+	fprints(", expected ", file, &res.e.errt);
+	if (!rerr_is_ok(res)) {
+		close(file, NULL);
+		free(file);
+		s_free(str);
+		return res;
+	}
+	fprints(expected_type, file, &res.e.errt);
+	if (!rerr_is_ok(res)) {
+		close(file, NULL);
+		free(file);
+		s_free(str);
+		return res;
+	}
+
+	close(file, &res.e.errt);
+	free(file);
+	if (!rerr_is_ok(res)) {
+		s_free(str);
+		return res;
+	}
+
+	cstr = nalloc(sizeof(char), s_len(str)+1, &res.e.errt);
+	if (!rerr_is_ok(res)) {
+		s_free(str);
+		return res;
+	}
+	memmove(cstr, s_to_c(str), sizeof(char) * (s_len(str)+1));
+
+	res.is_errt = false;
+	res.e.msg = cstr;
+
+	s_free(str);
+	return res;
+}
+rerr_t
+rerr_uncallable(const char ref type)
+{
+	String own str;
+	FILE own file;
+	char own cstr;
+	rerr_t res = RERR_OK;
+
+	str = s_new(&res.e.errt);
+	if (!rerr_is_ok(res)) return res;
+	file = (FILE own)sf_open(str, &res.e.errt);
+	if (!rerr_is_ok(res)) {
+		close(file, NULL);
+		free(file);
+		return res;
+	}
+
+	fprints("Value of type ", file, &res.e.errt);
+	if (!rerr_is_ok(res)) {
+		close(file, NULL);
+		free(file);
+		s_free(str);
+		return res;
+	}
+	fprints(type, file, &res.e.errt);
+	if (!rerr_is_ok(res)) {
+		close(file, NULL);
+		free(file);
+		s_free(str);
+		return res;
+	}
+	fprints(" isn't callable", file, &res.e.errt);
+	if (!rerr_is_ok(res)) {
+		close(file, NULL);
+		free(file);
+		s_free(str);
+		return res;
+	}
+
+	close(file, &res.e.errt);
+	free(file);
+	if (!rerr_is_ok(res)) {
+		s_free(str);
+		return res;
+	}
+
+	cstr = nalloc(sizeof(char), s_len(str)+1, &res.e.errt);
+	if (!rerr_is_ok(res)) {
+		s_free(str);
+		return res;
+	}
+	memmove(cstr, s_to_c(str), sizeof(char) * (s_len(str)+1));
+
+	res.is_errt = false;
+	res.e.msg = cstr;
+
+	s_free(str);
+	return res;
+}
+rerr_t
+rerr_undefined_name(String_ref name)
+{
+	String own str;
+	FILE own file;
+	char own cstr;
+	rerr_t res = RERR_OK;
+
+	str = s_new(&res.e.errt);
+	if (!rerr_is_ok(res)) return res;
+	file = (FILE own)sf_open(str, &res.e.errt);
+	if (!rerr_is_ok(res)) {
+		close(file, NULL);
+		free(file);
+		return res;
+	}
+
+	fprints("Name ", file, &res.e.errt);
+	if (!rerr_is_ok(res)) {
+		close(file, NULL);
+		free(file);
+		s_free(str);
+		return res;
+	}
+	string_print(name, true, file, &res.e.errt);
+	if (!rerr_is_ok(res)) {
+		close(file, NULL);
+		free(file);
+		s_free(str);
+		return res;
+	}
+	fprints(" is undefined", file, &res.e.errt);
 	if (!rerr_is_ok(res)) {
 		close(file, NULL);
 		free(file);

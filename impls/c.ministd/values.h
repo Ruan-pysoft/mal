@@ -6,6 +6,19 @@
 #include "error.h"
 #include "types.h"
 
+enum Value_type {
+	VT_SYM,
+	VT_NUM,
+	VT_LST,
+	VT_STR,
+	VT_NIL,
+	VT_BOO,
+	VT_KEY,
+	VT_VEC,
+	VT_MAP,
+	VT_FNC
+};
+
 Value_own value_symbol(String_own symbol, err_t ref err_out);
 Value_own value_number(int number, err_t ref err_out);
 Value_own value_list(List_own list, err_t ref err_out);
@@ -20,6 +33,7 @@ Value_own value_copy(Value_ref this);
 void value_free(Value_own this);
 
 void value_print(Value_ref this, bool repr, FILE ref file, err_t ref err_out);
+enum Value_type value_type(Value_ref this);
 bool value_issymbol(Value_ref this);
 bool value_isnumber(Value_ref this);
 bool value_islist(Value_ref this);
