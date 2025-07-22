@@ -1,5 +1,7 @@
 #include "types.h"
 
+#include <ministd.h>
+#include <ministd_fmt.h>
 #include <ministd_memory.h>
 #include <ministd_string.h>
 
@@ -37,8 +39,12 @@ struct String_struct {
 String_own
 string_new(const char ref cstr, err_t ref err_out)
 {
+	return string_newn(cstr, strlen(cstr), err_out);
+}
+String_own
+string_newn(const char ref cstr, usz len, err_t ref err_out)
+{
 	err_t err = ERR_OK;
-	const usz len = strlen(cstr);
 	struct String_struct own res;
 
 ALLOC();
@@ -48,7 +54,8 @@ ALLOC();
 		free(res);
 		ERR_WITH(err, NULL);
 	}
-	memmove(res->content, cstr, sizeof(*res->content) * (len+1));
+	memmove(res->content, cstr, sizeof(*res->content) * len);
+	res->content[len] = '\0';
 
 	res->len = len;
 
@@ -68,6 +75,13 @@ string_free(String_own this)
 }
 }
 
+void
+string_print(String_ref this, bool repr, FILE ref file, err_t ref err_out)
+{
+	(void)repr; /* TODO: implement repr-printing */
+
+	fprints(this->content, file, err_out);
+}
 usz
 string_len(String_ref this)
 {
@@ -216,6 +230,29 @@ list_free(List_own this)
 	}
 }
 
+void
+list_print(List_ref this, char open, char close, FILE ref file,
+	   err_t ref err_out)
+{
+	err_t err = ERR_OK;
+	usz i;
+
+	fprintc(open, file, &err);
+	TRY_VOID(err);
+
+	for (i = 0; i < this->len; ++i) {
+		if (i != 0) {
+			fprintc(' ', file, &err);
+			TRY_VOID(err);
+		}
+
+		value_print(this->values[i], true, file, &err);
+		TRY_VOID(err);
+	}
+
+	fprintc(close, file, &err);
+	TRY_VOID(err);
+}
 usz
 list_len(List_ref this)
 {
@@ -484,6 +521,32 @@ hashmap_free(HashMap_own this)
 	}
 }
 
+void
+hashmap_print(HashMap_ref this, FILE ref file, err_t ref err_out)
+{
+	err_t err = ERR_OK;
+	usz i;
+
+	fprintc('{', file, &err);
+	TRY_VOID(err);
+
+	for (i = 0; i < this->len; ++i) {
+		if (i != 0) {
+			fprintc(' ', file, &err);
+			TRY_VOID(err);
+		}
+
+		string_print(this->keys[i], true, file, &err);
+		TRY_VOID(err);
+		fprintc(' ', file, &err);
+		TRY_VOID(err);
+		value_print(this->values[i], true, file, &err);
+		TRY_VOID(err);
+	}
+
+	fprintc('}', file, &err);
+	TRY_VOID(err);
+}
 usz
 hashmap_size(HashMap_ref this)
 {
@@ -834,14 +897,48 @@ fn_free(Fn_own this)
 
 #include "env.h"
 
-/* requires external function `EVAL` */
-Value_own EVAL(Value_own expr, MutEnv_ref, rerr_t ref err_out);
+void
+fn_print(Fn_ref this, FILE ref file, err_t ref err_out)
+{
+	err_t err = ERR_OK;
+
+	if (this->is_builtin) {
+		fprints("<BUILTIN FUNCTION 0x", file, &err);
+		TRY_VOID(err);
+		fprintuzx((usz)this->f.builtin, file, &err);
+		TRY_VOID(err);
+		fprintc('>', file, &err);
+		TRY_VOID(err);
+	} else {
+		fprintc('<', file, &err);
+		TRY_VOID(err);
+		if (this->f.mal.variadic) {
+			fprints("VARIADIC ", file, &err);
+			TRY_VOID(err);
+		}
+		fprints("FUNCTION WITH ", file, &err);
+		TRY_VOID(err);
+		fprintuz(this->f.mal.n_args, file, &err);
+		TRY_VOID(err);
+		fprints(" ARGUMENTS>", file, &err);
+		TRY_VOID(err);
+	}
+}
 Value_own
 fn_call(Fn_ref this, List_own args, rerr_t ref err_out)
 {
 	rerr_t err = RERR_OK;
 	MutEnv_ref env;
 	Value_own res;
+
+	if (fn_EVAL == NULL) {
+		fprints(
+			"ERROR: calling `fn_call` without defining value evaluation!\n",
+			stderr,
+			NULL
+		);
+		exit(1);
+	}
 
 	env = env_new(this->closure, &err.e.errt);
 	RTRY_WITH(err, NULL);
@@ -865,7 +962,7 @@ fn_call(Fn_ref this, List_own args, rerr_t ref err_out)
 			env_free(env);
 			RERR_WITH(err, NULL);
 		}
-		res = EVAL(value_copy(this->f.mal.body), env, &err);
+		res = fn_EVAL(value_copy(this->f.mal.body), env, &err);
 		if (!rerr_is_ok(err)) {
 			env_free(env);
 			RERR_WITH(err, NULL);

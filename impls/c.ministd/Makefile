@@ -11,8 +11,8 @@ LDFLAGS       := -L. -lministd
 
 #####################
 
-SRC = values.c reader.c printer.c error.c env.c
-HEADERS = values.h reader.h printer.h error.h env.h
+SRC = types.c values.c reader.c printer.c error.c env.c
+HEADERS = types.h values.h reader.h printer.h error.h env.h
 
 S0 = step0_repl
 S1 = step1_read_print
@@ -20,13 +20,13 @@ S2 = step2_eval
 S3 = step3_env
 
 S0_SRC = $(S0).c
-S1_SRC = $(S1).c values.c reader.c printer.c error.c
-S2_SRC = $(S2).c values.c reader.c printer.c error.c env.c
+S1_SRC = $(S1).c types.c values.c reader.c printer.c error.c env.c
+S2_SRC = $(S2).c types.c values.c reader.c printer.c error.c env.c
 S3_SRC = $(S3).c $(SRC)
 
 S0_HEADERS =
-S1_HEADERS = values.h reader.h printer.h error.h
-S2_HEADERS = values.h reader.h printer.h error.h env.h
+S1_HEADERS = types.h values.h reader.h printer.h error.h env.h
+S2_HEADERS = types.h values.h reader.h printer.h error.h env.h
 S3_HEADERS = $(HEADERS)
 
 S0_CFLAGS =

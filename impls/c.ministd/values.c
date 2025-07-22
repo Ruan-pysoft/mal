@@ -1,5 +1,6 @@
 #include "values.h"
 
+#include <ministd_fmt.h>
 #include <ministd_memory.h>
 
 enum Value_type {
@@ -63,7 +64,7 @@ Value_own
 value_number(int number, err_t ref err_out)
 {
 	err_t err = ERR_OK;
-	struct Value_struct own res = _value_alloc(VT_SYM, &err);
+	struct Value_struct own res = _value_alloc(VT_NUM, &err);
 	TRY_WITH(err, NULL);
 
 	res->fns = 0;
@@ -75,7 +76,7 @@ Value_own
 value_list(List_own list, err_t ref err_out)
 {
 	err_t err = ERR_OK;
-	struct Value_struct own res = _value_alloc(VT_SYM, &err);
+	struct Value_struct own res = _value_alloc(VT_LST, &err);
 	if (err != ERR_OK) {
 		list_free(list);
 		ERR_WITH(err, NULL);
@@ -90,7 +91,7 @@ Value_own
 value_string(String_own string, err_t ref err_out)
 {
 	err_t err = ERR_OK;
-	struct Value_struct own res = _value_alloc(VT_SYM, &err);
+	struct Value_struct own res = _value_alloc(VT_STR, &err);
 	if (err != ERR_OK) {
 		string_free(string);
 		ERR_WITH(err, NULL);
@@ -105,7 +106,7 @@ Value_own
 value_nil(err_t ref err_out)
 {
 	err_t err = ERR_OK;
-	struct Value_struct own res = _value_alloc(VT_SYM, &err);
+	struct Value_struct own res = _value_alloc(VT_NIL, &err);
 	TRY_WITH(err, NULL);
 
 	res->fns = 0;
@@ -116,7 +117,7 @@ Value_own
 value_bool(bool boolean, err_t ref err_out)
 {
 	err_t err = ERR_OK;
-	struct Value_struct own res = _value_alloc(VT_SYM, &err);
+	struct Value_struct own res = _value_alloc(VT_BOO, &err);
 	TRY_WITH(err, NULL);
 
 	res->fns = 0;
@@ -128,7 +129,7 @@ Value_own
 value_keyword(String_own keyword, err_t ref err_out)
 {
 	err_t err = ERR_OK;
-	struct Value_struct own res = _value_alloc(VT_SYM, &err);
+	struct Value_struct own res = _value_alloc(VT_KEY, &err);
 	if (err != ERR_OK) {
 		string_free(keyword);
 		ERR_WITH(err, NULL);
@@ -143,7 +144,7 @@ Value_own
 value_vector(List_own vector, err_t ref err_out)
 {
 	err_t err = ERR_OK;
-	struct Value_struct own res = _value_alloc(VT_SYM, &err);
+	struct Value_struct own res = _value_alloc(VT_VEC, &err);
 	if (err != ERR_OK) {
 		list_free(vector);
 		ERR_WITH(err, NULL);
@@ -158,7 +159,7 @@ Value_own
 value_hashmap(HashMap_own hashmap, err_t ref err_out)
 {
 	err_t err = ERR_OK;
-	struct Value_struct own res = _value_alloc(VT_SYM, &err);
+	struct Value_struct own res = _value_alloc(VT_MAP, &err);
 	if (err != ERR_OK) {
 		hashmap_free(hashmap);
 		ERR_WITH(err, NULL);
@@ -173,7 +174,7 @@ Value_own
 value_fn(Fn_own fn, err_t ref err_out)
 {
 	err_t err = ERR_OK;
-	struct Value_struct own res = _value_alloc(VT_SYM, &err);
+	struct Value_struct own res = _value_alloc(VT_FNC, &err);
 	if (err != ERR_OK) {
 		fn_free(fn);
 		ERR_WITH(err, NULL);
@@ -227,6 +228,38 @@ value_free(Value_own this)
 	}
 }
 
+void
+value_print(Value_ref this, bool repr, FILE ref file, err_t ref err_out)
+{
+	switch (this->type) {
+		case VT_SYM:
+		case VT_STR:
+		case VT_KEY: {
+			string_print(this->v.str, repr, file, err_out);
+		break; }
+		case VT_NUM: {
+			fprinti(this->v.num, file, err_out);
+		break; }
+		case VT_LST: {
+			list_print(this->v.lst, '(', ')', file, err_out);
+		break; }
+		case VT_NIL: {
+			fprints("nil", file, err_out);
+		break; }
+		case VT_BOO: {
+			fprints(this->v.boo ? "true" : "false", file, err_out);
+		break; }
+		case VT_VEC: {
+			list_print(this->v.lst, '[', ']', file, err_out);
+		break; }
+		case VT_MAP: {
+			hashmap_print(this->v.map, file, err_out);
+		break; }
+		case VT_FNC: {
+			fn_print(this->v.fnc, file, err_out);
+		break; }
+	}
+}
 bool
 value_issymbol(Value_ref this)
 {

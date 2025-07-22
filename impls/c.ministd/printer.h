@@ -6,7 +6,6 @@
 
 #include "values.h"
 
-const char own pr_str(const value_t ref val, bool print_readably,
-		      err_t ref err_out);
+const char own pr_str(Value_ref val, bool print_readably, err_t ref err_out);
 
 #endif /* PRINTER_H */

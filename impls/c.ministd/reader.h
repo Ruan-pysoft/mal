@@ -7,6 +7,6 @@
 #include "error.h"
 #include "values.h"
 
-const value_t own read_str(const char ref str, perr_t ref err_out);
+Value_own read_str(const char ref str, perr_t ref err_out);
 
 #endif /* READER_H */

@@ -31,9 +31,11 @@ void env_free(Env_own this);
 typedef const struct String_struct own String_own;
 typedef const struct String_struct ref String_ref;
 String_own string_new(const char ref cstr, err_t ref err_out);
+String_own string_newn(const char ref cstr, usz len, err_t ref err_out);
 String_own string_copy(String_ref this);
 void string_free(String_own this);
 
+void string_print(String_ref this, bool repr, FILE ref file, err_t ref err_out);
 usz string_len(String_ref this);
 const char ref string_cstr(String_ref this);
 /* equality checking can implement some optimisations that comparison cannot */
@@ -51,6 +53,8 @@ List_own list_tail(List_ref this, usz from_idx, err_t ref err_out);
 List_own list_copy(List_ref this);
 void list_free(List_own this);
 
+void list_print(List_ref this, char open, char close, FILE ref file,
+		err_t ref err_out);
 usz list_len(List_ref this);
 /* error with ERR_INVAL for n >= list_len(this) */
 Value_ref list_nth(List_ref this, usz n, err_t ref err_out);
@@ -67,7 +71,7 @@ struct List_iter {
 	List_ref list;
 	usz pos;
 };
-typedef const struct List_iter List_iter;
+typedef struct List_iter List_iter;
 List_iter list_iter(List_ref this);
 List_iter list_next(List_iter this);
 bool list_isend(List_iter this);
@@ -87,6 +91,7 @@ HashMap_own hashmap_deepcopy(HashMap_ref this, err_t ref err_out);
 HashMap_own hashmap_copy(HashMap_ref this);
 void hashmap_free(HashMap_own this);
 
+void hashmap_print(HashMap_ref this, FILE ref file, err_t ref err_out);
 /* no. of key/value pairs in hash-map */
 usz hashmap_size(HashMap_ref this);
 bool hashmap_contains(HashMap_ref this, String_ref key);
@@ -108,7 +113,7 @@ struct HashMap_iter {
 	HashMap_ref hashmap;
 	usz pos;
 };
-typedef const struct HashMap_iter HashMap_iter;
+typedef struct HashMap_iter HashMap_iter;
 HashMap_iter hashmap_iter(HashMap_ref this);
 HashMap_iter hashmap_next(HashMap_iter this);
 bool hashmap_isend(HashMap_iter this);
@@ -134,6 +139,11 @@ Fn_own fn_new(Value_own body, String_own own args, usz n_args, bool variadic,
 Fn_own fn_copy(Fn_ref this);
 void fn_free(Fn_own this);
 
+void fn_print(Fn_ref this, FILE ref file, err_t ref err_out);
+/* requires external function `EVAL` */
+/* this variable to be set in the main file, NULL when not implemented yet */
+extern Value_own (ref fn_EVAL)(Value_own expr, MutEnv_ref env,
+			       rerr_t ref err_out);
 Value_own fn_call(Fn_ref this, List_own args, rerr_t ref err_out);
 Env_ref fn_closure(Fn_ref this);
 

@@ -36,6 +36,72 @@ perr_is_ok(perr_t this)
 {
 	return this.is_errt && this.e.errt == ERR_OK;
 }
+perr_t
+perr_eof(const char ref doing, const char ref expected)
+{
+	String own str;
+	FILE own file;
+	char own cstr;
+	perr_t res = PERR_OK;
+
+	str = s_new(&res.e.errt);
+	if (!perr_is_ok(res)) return res;
+	file = (FILE own)sf_open(str, &res.e.errt);
+	if (!perr_is_ok(res)) {
+		close(file, NULL);
+		free(file);
+		return res;
+	}
+
+	fprints("Encountered EOF while ", file, &res.e.errt);
+	if (!perr_is_ok(res)) {
+		close(file, NULL);
+		free(file);
+		s_free(str);
+		return res;
+	}
+	fprints(doing, file, &res.e.errt);
+	if (!perr_is_ok(res)) {
+		close(file, NULL);
+		free(file);
+		s_free(str);
+		return res;
+	}
+	fprints(", expected ", file, &res.e.errt);
+	if (!perr_is_ok(res)) {
+		close(file, NULL);
+		free(file);
+		s_free(str);
+		return res;
+	}
+	fprints(expected, file, &res.e.errt);
+	if (!perr_is_ok(res)) {
+		close(file, NULL);
+		free(file);
+		s_free(str);
+		return res;
+	}
+
+	close(file, &res.e.errt);
+	free(file);
+	if (!perr_is_ok(res)) {
+		s_free(str);
+		return res;
+	}
+
+	cstr = nalloc(sizeof(char), s_len(str)+1, &res.e.errt);
+	if (!perr_is_ok(res)) {
+		s_free(str);
+		return res;
+	}
+	memmove(cstr, s_to_c(str), sizeof(char) * (s_len(str)+1));
+
+	res.is_errt = false;
+	res.e.msg = cstr;
+
+	s_free(str);
+	return res;
+}
 
 const rerr_t RERR_OK = {
 	true,

@@ -8,35 +8,39 @@
 #include "reader.h"
 #include "values.h"
 
+Value_own (ref fn_EVAL)(Value_own expr, MutEnv_ref env, rerr_t ref err_out)
+	= NULL;
+
 /* `read` is a function in `ministd_fmt.h`...
  * I should either add optional prefixes to all ministd functions,
  * or I should just change read/write/close/etc
  * to file_read/file_write/file_close etc...
  */
-static const value_t own
+static Value_own
 READ(const char ref line)
 {
 	perr_t err = PERR_OK;
-	const value_t own val;
+	Value_own val;
 
 	val = read_str(line, &err);
-	if (err.type != PT_OK) {
+	if (!perr_is_ok(err)) {
 		perr_display(&err, stderr, NULL);
 		fprintc('\n', stderr, NULL);
+		perr_deinit(err);
 		return NULL;
 	}
 
 	return val;
 }
 
-static const value_t own
-EVAL(const value_t own processed)
+static Value_own
+EVAL(Value_own processed)
 {
 	return processed;
 }
 
 static const char own
-PRINT(const value_t own value)
+PRINT(Value_own value)
 {
 	err_t err = ERR_OK;
 	const char own str;
@@ -54,8 +58,8 @@ PRINT(const value_t own value)
 static const char own
 rep(const char ref line)
 {
-	const value_t own read_res;
-	const value_t own eval_res;
+	Value_own read_res;
+	Value_own eval_res;
 	const char own print_res;
 
 	read_res = READ(line);

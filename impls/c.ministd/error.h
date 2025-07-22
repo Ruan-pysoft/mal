@@ -15,6 +15,7 @@ typedef struct perr_t {
 void perr_display(const perr_t ref this, FILE ref file, err_t ref err_out);
 void perr_deinit(perr_t this);
 bool perr_is_ok(perr_t this);
+perr_t perr_eof(const char ref doing, const char ref expected);
 
 extern const perr_t PERR_OK;
 
