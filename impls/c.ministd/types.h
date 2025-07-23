@@ -54,6 +54,7 @@ List_own list_tail(List_ref this, usz from_idx, err_t ref err_out);
 List_own list_copy(List_ref this);
 void list_free(List_own this);
 
+bool list_iseq(List_ref this, List_ref other);
 void list_print(List_ref this, char open, char close, FILE ref file,
 		err_t ref err_out);
 usz list_len(List_ref this);
@@ -92,6 +93,7 @@ HashMap_own hashmap_deepcopy(HashMap_ref this, err_t ref err_out);
 HashMap_own hashmap_copy(HashMap_ref this);
 void hashmap_free(HashMap_own this);
 
+bool hashmap_iseq(HashMap_ref this, HashMap_ref other);
 void hashmap_print(HashMap_ref this, FILE ref file, err_t ref err_out);
 /* no. of key/value pairs in hash-map */
 usz hashmap_size(HashMap_ref this);
@@ -140,6 +142,7 @@ Fn_own fn_new(Value_own body, String_own own args, usz n_args, bool variadic,
 Fn_own fn_copy(Fn_ref this);
 void fn_free(Fn_own this);
 
+bool fn_iseq(Fn_ref this, Fn_ref other);
 void fn_print(Fn_ref this, FILE ref file, err_t ref err_out);
 /* requires external function `EVAL` */
 /* this variable to be set in the main file, NULL when not implemented yet */

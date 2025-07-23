@@ -243,6 +243,22 @@ list_free(List_own this)
 	}
 }
 
+bool
+list_iseq(List_ref this, List_ref other)
+{
+	usz i;
+
+	if (this == other) return true;
+	if (this->len != other->len) return false;
+
+	for (i = 0; i < this->len; ++i) {
+		if (!value_iseq(this->values[i], other->values[i])) {
+			return false;
+		}
+	}
+
+	return true;
+}
 void
 list_print(List_ref this, char open, char close, FILE ref file,
 	   err_t ref err_out)
@@ -534,6 +550,26 @@ hashmap_free(HashMap_own this)
 	}
 }
 
+bool
+hashmap_iseq(HashMap_ref this, HashMap_ref other)
+{
+	err_t err = ERR_OK;
+	usz i;
+	Value_ref val;
+
+	if (this == other) return true;
+	if (this->len != other->len) return false;
+
+	for (i = 0; i < this->len; ++i) {
+		val = hashmap_get(other, this->keys[i], &err);
+
+		if (err != ERR_OK || !value_iseq(this->values[i], val)) {
+			return false;
+		}
+	}
+
+	return true;
+}
 void
 hashmap_print(HashMap_ref this, FILE ref file, err_t ref err_out)
 {
@@ -910,6 +946,25 @@ fn_free(Fn_own this)
 
 #include "env.h"
 
+bool
+fn_iseq(Fn_ref this, Fn_ref other)
+{
+	if (this == other) return true;
+	if (this->is_builtin != other->is_builtin) return false;
+	if (this->closure != other->closure) return false;
+
+	if (this->is_builtin) {
+		return this->f.builtin == other->f.builtin;
+	} else {
+		/* theoretically,
+		 * I could test here that they take the same arguments,
+		 * and then I could test that the bodies are the same,
+		 * but that's too much work for now.
+		 * Maybe later.
+		 */
+		return false;
+	}
+}
 void
 fn_print(Fn_ref this, FILE ref file, err_t ref err_out)
 {
@@ -941,7 +996,8 @@ Value_own
 fn_call(Fn_ref this, List_own args, rerr_t ref err_out)
 {
 	rerr_t err = RERR_OK;
-	MutEnv_ref env;
+	Env_own outer;
+	MutEnv_own env;
 	Value_own res;
 
 	if (fn_EVAL == NULL) {
@@ -953,7 +1009,8 @@ fn_call(Fn_ref this, List_own args, rerr_t ref err_out)
 		exit(1);
 	}
 
-	env = env_new(this->closure, &err.e.errt);
+	outer = this->closure == NULL ? NULL : env_copy_const(this->closure);
+	env = env_new(outer, &err.e.errt);
 	RTRY_WITH(err, NULL);
 
 	if (this->is_builtin) {

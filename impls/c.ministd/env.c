@@ -66,6 +66,11 @@ env_copy(MutEnv_ref this)
 
 	return (MutEnv_own)this;
 }
+Env_own
+env_copy_const(Env_ref this)
+{
+	return env_copy((MutEnv_ref)this);
+}
 void
 env_free(Env_own this)
 {
@@ -73,8 +78,6 @@ env_free(Env_own this)
 	--((MutEnv_ref)this)->ref_count;
 
 	if (this->ref_count == this->circular_refs) {
-		env_free(this->outer);
-
 		if (this->vars != NULL) {
 			usz i;
 			for (i = 0; i < this->len; ++i) {
@@ -85,14 +88,12 @@ env_free(Env_own this)
 		if (this->vals != NULL) {
 			usz i;
 			for (i = 0; i < this->len; ++i) {
-				_env_circular_refs_remove(
-					this->outer,
-					this->vals[i]
-				);
 				value_free(this->vals[i]);
 			}
 			free(this->vals);
 		}
+
+		env_free(this->outer);
 		free((own_ptr)this);
 	}
 }
@@ -309,22 +310,10 @@ env_bind(MutEnv_ref this, String_ref ref arg_names, usz n_args, bool variadic,
 	list_free(arg_vals);
 }
 
-bool
-_env_isparent(Env_ref this, Env_ref other)
-{
-	if (this == NULL || other == NULL) return false;
-
-	while (this != NULL) {
-		if (this->outer == other) return true;
-		this = this->outer;
-	}
-
-	return false;
-}
 void
-_env_circular_refs_remove(Env_ref start, Value_ref val)
+_env_circular_refs_remove(Env_ref this, Value_ref val)
 {
-	if (start == NULL) return;
+	if (this == NULL) return;
 	if (value_fns(val) == 0) return;
 
 	if (value_islist(val)) {
@@ -333,7 +322,7 @@ _env_circular_refs_remove(Env_ref start, Value_ref val)
 
 		for (at = list_iter(list); !list_isend(at); list_next(at)) {
 			if (value_fns(list_at(at, NULL)) > 0) {
-				_env_circular_refs_remove(start, val);
+				_env_circular_refs_remove(this, val);
 			}
 		}
 	} else if (value_isvector(val)) {
@@ -342,7 +331,7 @@ _env_circular_refs_remove(Env_ref start, Value_ref val)
 
 		for (at = list_iter(list); !list_isend(at); list_next(at)) {
 			if (value_fns(list_at(at, NULL)) > 0) {
-				_env_circular_refs_remove(start, val);
+				_env_circular_refs_remove(this, val);
 			}
 		}
 	} else if (value_ishashmap(val)) {
@@ -352,14 +341,14 @@ _env_circular_refs_remove(Env_ref start, Value_ref val)
 		for (at = hashmap_iter(hashmap); !hashmap_isend(at);
 				hashmap_next(at)) {
 			if (value_fns(hashmap_valueat(at, NULL)) > 0) {
-				_env_circular_refs_remove(start, val);
+				_env_circular_refs_remove(this, val);
 			}
 		}
 	} else if (value_isfn(val)) {
 		Fn_ref fn = value_getfn(val, NULL);
 
-		if (_env_isparent(start, fn_closure(fn))) {
-			--((MutEnv_ref)fn_closure(fn))->circular_refs;
+		if (fn_closure(fn) == this) {
+			--((MutEnv_ref)this)->circular_refs;
 		}
 	} else {
 		/* something went wrong! */
@@ -367,9 +356,9 @@ _env_circular_refs_remove(Env_ref start, Value_ref val)
 	}
 }
 void
-_env_circular_refs_add(Env_ref start, Value_ref val)
+_env_circular_refs_add(Env_ref this, Value_ref val)
 {
-	if (start == NULL) return;
+	if (this == NULL) return;
 	if (value_fns(val) == 0) return;
 
 
@@ -379,7 +368,7 @@ _env_circular_refs_add(Env_ref start, Value_ref val)
 
 		for (at = list_iter(list); !list_isend(at); list_next(at)) {
 			if (value_fns(list_at(at, NULL)) > 0) {
-				_env_circular_refs_add(start, val);
+				_env_circular_refs_add(this, val);
 			}
 		}
 	} else if (value_isvector(val)) {
@@ -388,7 +377,7 @@ _env_circular_refs_add(Env_ref start, Value_ref val)
 
 		for (at = list_iter(list); !list_isend(at); list_next(at)) {
 			if (value_fns(list_at(at, NULL)) > 0) {
-				_env_circular_refs_add(start, val);
+				_env_circular_refs_add(this, val);
 			}
 		}
 	} else if (value_ishashmap(val)) {
@@ -398,14 +387,14 @@ _env_circular_refs_add(Env_ref start, Value_ref val)
 		for (at = hashmap_iter(hashmap); !hashmap_isend(at);
 				hashmap_next(at)) {
 			if (value_fns(hashmap_valueat(at, NULL)) > 0) {
-				_env_circular_refs_add(start, val);
+				_env_circular_refs_add(this, val);
 			}
 		}
 	} else if (value_isfn(val)) {
 		Fn_ref fn = value_getfn(val, NULL);
 
-		if (_env_isparent(start, fn_closure(fn))) {
-			++((MutEnv_ref)fn_closure(fn))->circular_refs;
+		if (fn_closure(fn) == this) {
+			++((MutEnv_ref)this)->circular_refs;
 		}
 	} else {
 		/* something went wrong! */

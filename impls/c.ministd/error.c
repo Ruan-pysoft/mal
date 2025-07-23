@@ -308,7 +308,7 @@ rerr_arg_type_mismatch(Value_ref arg, usz argnum, const char ref expected_type)
 		s_free(str);
 		return res;
 	}
-	fprintc('(', file, &res.e.errt);
+	fprints(" (", file, &res.e.errt);
 	if (!rerr_is_ok(res)) {
 		close(file, NULL);
 		free(file);

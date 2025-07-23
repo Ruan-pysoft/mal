@@ -32,6 +32,7 @@ Value_own value_fn(Fn_own fn, err_t ref err_out);
 Value_own value_copy(Value_ref this);
 void value_free(Value_own this);
 
+bool value_iseq(Value_ref this, Value_ref other);
 void value_print(Value_ref this, bool repr, FILE ref file, err_t ref err_out);
 enum Value_type value_type(Value_ref this);
 bool value_issymbol(Value_ref this);

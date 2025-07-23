@@ -145,8 +145,9 @@ EVAL(Value_own val, MutEnv_ref env, rerr_t ref err_out)
 	}
 	debug = env_get(env, debug_key, &err.e.errt);
 	if (!rerr_is_ok(err)) {
-		value_free(val);
-		ERR_WITH(err, NULL);
+		rerr_deinit(err);
+		err = RERR_OK;
+		debug = NULL;
 	}
 	if (debug != NULL && !value_isnil(debug) && (!value_isbool(debug)
 			|| value_getbool(debug, NULL))) {
@@ -285,7 +286,7 @@ static char linebuf[LINECAP];
 			RERR_WITH(err, NULL); \
 		} \
 		if (!value_isnumber(b)) { \
-			err = rerr_arg_type_mismatch(a, 2, "number"); \
+			err = rerr_arg_type_mismatch(b, 2, "number"); \
 			list_free(args); \
 			RERR_WITH(err, NULL); \
 		} \
@@ -374,7 +375,7 @@ main(void)
 		if (out != NULL) {
 			prints(out, NULL);
 			printc('\n', NULL);
-			free((ptr)out);
+			free((own_ptr)out);
 		}
 	}
 

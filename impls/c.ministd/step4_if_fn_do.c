@@ -3,10 +3,12 @@
 #include <ministd_fmt.h>
 #include <ministd_memory.h>
 
+#include "core.h"
 #include "env.h"
 #include "error.h"
 #include "printer.h"
 #include "reader.h"
+#include "types.h"
 #include "values.h"
 
 static Value_own EVAL(Value_own val, MutEnv_ref env, rerr_t ref err_out);
@@ -222,7 +224,7 @@ eval_let(List_own args, MutEnv_ref env, rerr_t ref err_out)
 		val = list_nth(lbindings, i*2 + 1, NULL);
 
 		if (!value_issymbol(key)) {
-			err = rerr_arg_type_mismatch(key, i*2, "symbol");
+			err = rerr_arg_type_mismatch(key, i*2+1, "symbol");
 			value_free(bindings);
 			value_free(expr);
 			env_free(subenv);
@@ -254,6 +256,154 @@ eval_let(List_own args, MutEnv_ref env, rerr_t ref err_out)
 	value_free(bindings);
 
 	return EVAL(expr, subenv, err_out);
+}
+static Value_own
+eval_do(List_own args, MutEnv_ref env, rerr_t ref err_out)
+{
+	rerr_t err = RERR_OK;
+	List_iter at;
+	Value_own last = NULL;
+
+	if (list_len(args) == 0) {
+		err = rerr_arg_vararg_mismatch(1, 0);
+		list_free(args);
+		RERR_WITH(err, NULL);
+	}
+
+	for (at = list_iter(args); !list_isend(at); at = list_next(at)) {
+		if (last != NULL) value_free(last);
+		last = EVAL(value_copy(list_at(at, NULL)), env, &err);
+
+		if (!rerr_is_ok(err)) {
+			list_free(args);
+			RERR_WITH(err, NULL);
+		}
+	}
+
+	list_free(args);
+
+	return last;
+}
+static Value_own
+eval_if(List_own args, MutEnv_ref env, rerr_t ref err_out)
+{
+	rerr_t err = RERR_OK;
+	Value_own cond;
+	Value_own res;
+
+	if (list_len(args) < 2) {
+		err = rerr_arg_vararg_mismatch(2, list_len(args));
+		list_free(args);
+		RERR_WITH(err, NULL);
+	}
+	if (list_len(args) > 3) {
+		err = rerr_arg_len_mismatch(3, list_len(args));
+		list_free(args);
+		RERR_WITH(err, NULL);
+	}
+
+	cond = EVAL(value_copy(list_nth(args, 0, NULL)), env, &err);
+	if (!rerr_is_ok(err)) {
+		list_free(args);
+		RERR_WITH(err, NULL);
+	}
+
+	if (!value_isnil(cond) && (!value_isbool(cond)
+			|| value_getbool(cond, NULL) != false)) {
+		res = EVAL(value_copy(list_nth(args, 1, NULL)), env, &err);
+		list_free(args);
+		RTRY_WITH(err, NULL);
+
+		return res;
+	} else if (list_len(args) == 3) {
+		res = EVAL(value_copy(list_nth(args, 2, NULL)), env, &err);
+		list_free(args);
+		RTRY_WITH(err, NULL);
+
+		return res;
+	} else {
+		list_free(args);
+		res = value_nil(&err.e.errt);
+		RTRY_WITH(err, NULL);
+
+		return res;
+	}
+}
+static Value_own
+eval_lambda(List_own args, MutEnv_ref env, rerr_t ref err_out)
+{
+	rerr_t err = RERR_OK;
+	List_own params;
+	Value_own body;
+	String_own own param_names;
+	usz n_params;
+	List_iter at;
+	usz i;
+	Fn_own fn;
+	Value_own res;
+
+	if (list_len(args) != 2) {
+		err = rerr_arg_len_mismatch(2, list_len(args));
+		list_free(args);
+		RERR_WITH(err, NULL);
+	}
+	if (!value_islist(list_nth(args, 0, NULL))) {
+		err = rerr_arg_type_mismatch(
+			list_nth(args, 0, NULL), 
+			1, 
+			"list"
+		);
+		list_free(args);
+		RERR_WITH(err, NULL);
+	}
+	params = list_copy(value_getlist(list_nth(args, 0, NULL), NULL));
+	body = value_copy(list_nth(args, 1, NULL));
+	list_free(args);
+
+	n_params = list_len(params);
+	param_names = nalloc(sizeof(*param_names), n_params, &err.e.errt);
+	if (!rerr_is_ok(err)) {
+		list_free(params);
+		value_free(body);
+		RERR_WITH(err, NULL);
+	}
+
+	for (at = list_iter(params), i = 0; !list_isend(at);
+			at = list_next(at), ++i) {
+		if (!value_issymbol(list_at(at, NULL))) {
+			usz j;
+			err = rerr_arg_type_mismatch(
+				list_at(at, NULL),
+				i+1,
+				"symbol"
+			);
+			list_free(params);
+			value_free(body);
+
+			for (j = 0; j < i; ++j) {
+				string_free(param_names[j]);
+			}
+			free(param_names);
+
+			ERR_WITH(err, NULL);
+		}
+
+		param_names[i] = string_copy(
+			value_getsymbol(list_at(at, NULL), NULL)
+		);
+	}
+
+	list_free(params);
+
+	fn = fn_new(
+		body, param_names, n_params, false, env_copy(env),
+		&err.e.errt
+	);
+	RTRY_WITH(err, NULL);
+	res = value_fn(fn, &err.e.errt);
+	RTRY_WITH(err, NULL);
+
+	return res;
 }
 
 static Value_own
@@ -329,6 +479,18 @@ EVAL(Value_own val, MutEnv_ref env, rerr_t ref err_out)
 				value_free(head);
 
 				return eval_let(tail, env, err_out);
+			} else if (string_match(fnname, "do") == C_EQ) {
+				value_free(head);
+
+				return eval_do(tail, env, err_out);
+			} else if (string_match(fnname, "if") == C_EQ) {
+				value_free(head);
+
+				return eval_if(tail, env, err_out);
+			} else if (string_match(fnname, "fn*") == C_EQ) {
+				value_free(head);
+
+				return eval_lambda(tail, env, err_out);
 			}
 		}
 
@@ -405,98 +567,21 @@ rep(const char ref line, MutEnv_ref env)
 #define LINECAP (16 * 1024)
 static char linebuf[LINECAP];
 
-#define ARYTH_OP(op) do { \
-		rerr_t err = RERR_OK; \
-		Value_ref a, b; \
-		Value_own res; \
-		int na, nb, nres; \
-		if (list_len(args) != 2) { \
-			err = rerr_arg_len_mismatch(2, list_len(args)); \
-			list_free(args); \
-			RERR_WITH(err, NULL); \
-		} \
-		a = list_nth(args, 0, NULL); \
-		b = list_nth(args, 1, NULL); \
-		if (!value_isnumber(a)) { \
-			err = rerr_arg_type_mismatch(a, 1, "number"); \
-			list_free(args); \
-			RERR_WITH(err, NULL); \
-		} \
-		if (!value_isnumber(b)) { \
-			err = rerr_arg_type_mismatch(b, 2, "number"); \
-			list_free(args); \
-			RERR_WITH(err, NULL); \
-		} \
-		na = value_getnumber(a, NULL); \
-		nb = value_getnumber(b, NULL); \
-		nres = na op nb; \
-		list_free(args); \
-		res = value_number(nres, &err.e.errt); \
-		RTRY_WITH(err, NULL); \
-		return res; \
-	} while (0)
-
-Value_own
-op_add(List_own args, MutEnv_ref env, rerr_t ref err_out)
-{
-	(void)env;
-	ARYTH_OP(+);
-}
-Value_own
-op_sub(List_own args, MutEnv_ref env, rerr_t ref err_out)
-{
-	(void)env;
-	ARYTH_OP(-);
-}
-Value_own
-op_mul(List_own args, MutEnv_ref env, rerr_t ref err_out)
-{
-	(void)env;
-	ARYTH_OP(*);
-}
-Value_own
-op_div(List_own args, MutEnv_ref env, rerr_t ref err_out)
-{
-	(void)env;
-	ARYTH_OP(/);
-}
-
 int
 main(void)
 {
 	const char own out;
 	MutEnv_own repl_env = env_new(NULL, NULL);
 
-	env_set(
+	/*env_set(
 		repl_env,
 		string_new("DEBUG-EVAL", NULL),
 		value_bool(true, NULL),
 		NULL
-	);
-	env_set(
-		repl_env,
-		string_new("+", NULL),
-		value_fn(fn_builtin(op_add, NULL, NULL), NULL),
-		NULL
-	);
-	env_set(
-		repl_env,
-		string_new("-", NULL),
-		value_fn(fn_builtin(op_sub, NULL, NULL), NULL),
-		NULL
-	);
-	env_set(
-		repl_env,
-		string_new("*", NULL),
-		value_fn(fn_builtin(op_mul, NULL, NULL), NULL),
-		NULL
-	);
-	env_set(
-		repl_env,
-		string_new("/", NULL),
-		value_fn(fn_builtin(op_div, NULL, NULL), NULL),
-		NULL
-	);
+	);*/
+	core_load(repl_env, NULL);
+
+	free((own_ptr)rep("(def! not (fn* (a) (if a false true)))", repl_env));
 
 	for (;;) {
 		prints("user> ", NULL);

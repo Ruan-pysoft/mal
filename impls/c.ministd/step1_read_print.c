@@ -95,7 +95,7 @@ main(void)
 		if (out != NULL) {
 			prints(out, NULL);
 			printc('\n', NULL);
-			free((ptr)out);
+			free((own_ptr)out);
 		}
 	}
 

@@ -7,6 +7,7 @@
 /* new empty environment, outer can be NULL */
 MutEnv_own env_new(Env_own outer, err_t ref err_out);
 MutEnv_own env_copy(MutEnv_ref this);
+Env_own env_copy_const(Env_ref this);
 void env_free(Env_own this);
 
 /* no. of values in environment */

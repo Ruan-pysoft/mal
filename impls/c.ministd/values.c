@@ -215,6 +215,42 @@ value_free(Value_own this)
 	}
 }
 
+bool
+value_iseq(Value_ref this, Value_ref other)
+{
+	if (this == other) return true;
+	if (this->type != other->type) return false;
+
+	switch (this->type) {
+		case VT_SYM:
+		case VT_STR:
+		case VT_KEY: {
+			return string_iseq(this->v.str, other->v.str);
+		break; }
+		case VT_NUM: {
+			return this->v.num == other->v.num;
+		break; }
+		case VT_LST:
+		case VT_VEC: {
+			return list_iseq(this->v.lst, other->v.lst);
+		break; }
+		case VT_NIL: return true;
+		case VT_BOO: {
+			return this->v.boo == other->v.boo;
+		break; }
+		case VT_MAP: {
+			return hashmap_iseq(this->v.map, other->v.map);
+		break; }
+		case VT_FNC: {
+			return fn_iseq(this->v.fnc, other->v.fnc);
+		break; }
+	}
+
+	/* WARN: execution should never reach this point
+	 * however, I'm adding it here, otherwise gcc complains...
+	 */
+	return false;
+}
 void
 value_print(Value_ref this, bool repr, FILE ref file, err_t ref err_out)
 {
