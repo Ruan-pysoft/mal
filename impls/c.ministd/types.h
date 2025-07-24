@@ -142,6 +142,18 @@ Fn_own fn_new(Value_own body, String_own own args, usz n_args, bool variadic,
 Fn_own fn_copy(Fn_ref this);
 void fn_free(Fn_own this);
 
+bool fn_isbuiltin(Fn_ref this);
+/* error with ERR_INVAL for !fn_isbuiltin(this) */
+builtin_fn fn_getbuiltin(Fn_ref this, err_t ref err_out);
+/* error with ERR_INVAL for fn_isbuiltin(this) */
+String_ref ref fn_getargs(Fn_ref this, err_t ref err_out);
+/* error with ERR_INVAL for fn_isbuiltin(this) */
+usz fn_getnargs(Fn_ref this, err_t ref err_out);
+/* error with ERR_INVAL for fn_isbuiltin(this) */
+bool fn_isvariadic(Fn_ref this, err_t ref err_out);
+/* error with ERR_INVAL for fn_isbuiltin(this) */
+Value_ref fn_getbody(Fn_ref this, err_t ref err_out);
+
 bool fn_iseq(Fn_ref this, Fn_ref other);
 void fn_print(Fn_ref this, FILE ref file, err_t ref err_out);
 /* requires external function `EVAL` */

@@ -176,6 +176,29 @@ Value_own
 value_copy(Value_ref this)
 {
 	++((struct Value_struct ref)this)->ref_count;
+
+	/* to make environment cycle counts accurate */
+	switch (this->type) {
+		case VT_SYM:
+		case VT_STR:
+		case VT_KEY: {
+			string_copy(this->v.str);
+		break; }
+		case VT_NUM: break;
+		case VT_LST:
+		case VT_VEC: {
+			list_copy(this->v.lst);
+		break; }
+		case VT_NIL: break;
+		case VT_BOO: break;
+		case VT_MAP: {
+			hashmap_copy(this->v.map);
+		break; }
+		case VT_FNC: {
+			fn_copy(this->v.fnc);
+		break; }
+	}
+
 	return (Value_own)this;
 }
 void
@@ -185,33 +208,35 @@ value_free(Value_own this)
 
 	--((struct Value_struct ref)this)->ref_count;
 
+	/* to make environment cycle counts accurate */
+	switch (this->type) {
+		case VT_SYM: {
+			string_free(this->v.str);
+		break; }
+		case VT_NUM: break;
+		case VT_LST: {
+			list_free(this->v.lst);
+		break; }
+		case VT_STR: {
+			string_free(this->v.str);
+		break; }
+		case VT_NIL: break;
+		case VT_BOO: break;
+		case VT_KEY: {
+			string_free(this->v.str);
+		break; }
+		case VT_VEC: {
+			list_free(this->v.lst);
+		break; }
+		case VT_MAP: {
+			hashmap_free(this->v.map);
+		break; }
+		case VT_FNC: {
+			fn_free(this->v.fnc);
+		break; }
+	}
 	if (this->ref_count == 0) {
-		switch (this->type) {
-			case VT_SYM: {
-				string_free(this->v.str);
-			break; }
-			case VT_NUM: break;
-			case VT_LST: {
-				list_free(this->v.lst);
-			break; }
-			case VT_STR: {
-				string_free(this->v.str);
-			break; }
-			case VT_NIL: break;
-			case VT_BOO: break;
-			case VT_KEY: {
-				string_free(this->v.str);
-			break; }
-			case VT_VEC: {
-				list_free(this->v.lst);
-			break; }
-			case VT_MAP: {
-				hashmap_free(this->v.map);
-			break; }
-			case VT_FNC: {
-				fn_free(this->v.fnc);
-			break; }
-		}
+		free((own_ptr)this);
 	}
 }
 

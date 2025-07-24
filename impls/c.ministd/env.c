@@ -7,6 +7,10 @@
 #include "types.h"
 #include "values.h"
 
+/* keeps track of all allocated environments */
+static Env_ref head = NULL;
+static Env_ref last = NULL;
+
 struct Env_struct {
 	/* TODO: turn this into a hashmap,
 	 * rather than a simple associative array
@@ -18,18 +22,9 @@ struct Env_struct {
 	usz cap;
 
 	usz ref_count;
-	usz circular_refs;
+	/* keep track of allocated environments via a linked list */
+	Env_ref prev, next;
 };
-/* do BEFORE removing value from environment:
- * find all functions pointing to this or parent environment,
- * and decrement the circular_refs count for each one
- */
-void _env_circular_refs_remove(Env_ref start, Value_ref val);
-/* do after adding value to environment:
- * find all functions pointing to this or parent environment,
- * and increment the circular_refs count for each one
- */
-void _env_circular_refs_add(Env_ref start, Value_ref val);
 MutEnv_own
 env_new(Env_own outer, err_t ref err_out)
 {
@@ -39,7 +34,6 @@ env_new(Env_own outer, err_t ref err_out)
 	res = alloc(sizeof(*res), &err);
 	TRY_WITH(err, NULL);
 	res->ref_count = 1;
-	res->circular_refs = 0;
 
 	res->outer = outer;
 
@@ -55,6 +49,18 @@ env_new(Env_own outer, err_t ref err_out)
 		free(res->vars);
 		free(res);
 		ERR_WITH(err, NULL);
+	}
+
+	if (last == NULL) {
+		res->prev = NULL;
+		res->next = NULL;
+		head = res;
+		last = res;
+	} else {
+		res->prev = last;
+		((MutEnv_ref)last)->next = res;
+		res->next = NULL;
+		last = res;
 	}
 
 	return res;
@@ -77,7 +83,16 @@ env_free(Env_own this)
 	if (this == NULL) return;
 	--((MutEnv_ref)this)->ref_count;
 
-	if (this->ref_count == this->circular_refs) {
+	if (this->ref_count == 0) {
+		if (this->prev != NULL) {
+			((MutEnv_ref)this->prev)->next = this->next;
+		}
+		if (this->next != NULL) {
+			((MutEnv_ref)this->next)->prev = this->prev;
+		}
+		if (head == this) head = this->next;
+		if (last == this) last = this->prev;
+
 		if (this->vars != NULL) {
 			usz i;
 			for (i = 0; i < this->len; ++i) {
@@ -95,6 +110,89 @@ env_free(Env_own this)
 
 		env_free(this->outer);
 		free((own_ptr)this);
+	}
+}
+
+usz
+_env_count_circrefs_at(Env_ref this, Value_ref val)
+{
+	usz count = 0;
+	if (this == NULL) return 0;
+	if (value_fns(val) == 0) return 0;
+
+	if (value_islist(val)) {
+		struct List_iter at;
+		List_ref list = value_getlist(val, NULL);
+
+		for (at = list_iter(list); !list_isend(at); list_next(at)) {
+			Value_ref v = list_at(at, NULL);
+			if (value_fns(v) > 0) {
+				count += _env_count_circrefs_at(this, v);
+			}
+		}
+
+		return count;
+	} else if (value_isvector(val)) {
+		struct List_iter at;
+		List_ref list = value_getvector(val, NULL);
+
+		for (at = list_iter(list); !list_isend(at); list_next(at)) {
+			Value_ref v = list_at(at, NULL);
+			if (value_fns(v) > 0) {
+				count += _env_count_circrefs_at(this, v);
+			}
+		}
+
+		return count;
+	} else if (value_ishashmap(val)) {
+		struct HashMap_iter at;
+		HashMap_ref hashmap = value_gethashmap(val, NULL);
+
+		for (at = hashmap_iter(hashmap); !hashmap_isend(at);
+				hashmap_next(at)) {
+			Value_ref v = hashmap_valueat(at, NULL);
+			if (value_fns(v) > 0) {
+				count += _env_count_circrefs_at(this, v);
+			}
+		}
+
+		return count;
+	} else if (value_isfn(val)) {
+		Fn_ref fn = value_getfn(val, NULL);
+
+		return fn_closure(fn) == this ? 1 : 0;
+	} else {
+		/* something went wrong! */
+		/* TODO: some error reporting here */
+
+		return 0;
+	}
+}
+usz
+_env_count_circular_refs(Env_ref this)
+{
+	usz i;
+	usz count = 0;
+	if (this == NULL) return 0;
+
+	for (i = 0; i < this->len; ++i) {
+		count += _env_count_circrefs_at(this, this->vals[i]);
+	}
+
+	return count;
+}
+void
+env_free_cycles(void)
+{
+	Env_ref env = head;
+
+	while (env != NULL) {
+		Env_ref next = env->next;
+		if (_env_count_circular_refs(env) == env->ref_count) {
+			((MutEnv_ref)env)->ref_count = 1;
+			env_free(env);
+		}
+		env = next;
 	}
 }
 
@@ -199,10 +297,8 @@ env_set(MutEnv_ref this, String_own var, Value_own val, err_t ref err_out)
 	for (i = 0; i < this->len; ++i) {
 		if (string_iseq(var, this->vars[i])) {
 			string_free(var);
-			_env_circular_refs_remove(this, this->vals[i]);
 			value_free(this->vals[i]);
 			this->vals[i] = val;
-			_env_circular_refs_add(this, this->vals[i]);
 
 			return;
 		}
@@ -215,7 +311,6 @@ env_set(MutEnv_ref this, String_own var, Value_own val, err_t ref err_out)
 
 	this->vars[this->len] = var;
 	this->vals[this->len] = val;
-	_env_circular_refs_add(this, this->vals[this->len]);
 	++this->len;
 }
 void
@@ -308,96 +403,4 @@ env_bind(MutEnv_ref this, String_ref ref arg_names, usz n_args, bool variadic,
 	}
 
 	list_free(arg_vals);
-}
-
-void
-_env_circular_refs_remove(Env_ref this, Value_ref val)
-{
-	if (this == NULL) return;
-	if (value_fns(val) == 0) return;
-
-	if (value_islist(val)) {
-		struct List_iter at;
-		List_ref list = value_getlist(val, NULL);
-
-		for (at = list_iter(list); !list_isend(at); list_next(at)) {
-			if (value_fns(list_at(at, NULL)) > 0) {
-				_env_circular_refs_remove(this, val);
-			}
-		}
-	} else if (value_isvector(val)) {
-		struct List_iter at;
-		List_ref list = value_getvector(val, NULL);
-
-		for (at = list_iter(list); !list_isend(at); list_next(at)) {
-			if (value_fns(list_at(at, NULL)) > 0) {
-				_env_circular_refs_remove(this, val);
-			}
-		}
-	} else if (value_ishashmap(val)) {
-		struct HashMap_iter at;
-		HashMap_ref hashmap = value_gethashmap(val, NULL);
-
-		for (at = hashmap_iter(hashmap); !hashmap_isend(at);
-				hashmap_next(at)) {
-			if (value_fns(hashmap_valueat(at, NULL)) > 0) {
-				_env_circular_refs_remove(this, val);
-			}
-		}
-	} else if (value_isfn(val)) {
-		Fn_ref fn = value_getfn(val, NULL);
-
-		if (fn_closure(fn) == this) {
-			--((MutEnv_ref)this)->circular_refs;
-		}
-	} else {
-		/* something went wrong! */
-		/* TODO: some error reporting here */
-	}
-}
-void
-_env_circular_refs_add(Env_ref this, Value_ref val)
-{
-	if (this == NULL) return;
-	if (value_fns(val) == 0) return;
-
-
-	if (value_islist(val)) {
-		struct List_iter at;
-		List_ref list = value_getlist(val, NULL);
-
-		for (at = list_iter(list); !list_isend(at); list_next(at)) {
-			if (value_fns(list_at(at, NULL)) > 0) {
-				_env_circular_refs_add(this, val);
-			}
-		}
-	} else if (value_isvector(val)) {
-		struct List_iter at;
-		List_ref list = value_getvector(val, NULL);
-
-		for (at = list_iter(list); !list_isend(at); list_next(at)) {
-			if (value_fns(list_at(at, NULL)) > 0) {
-				_env_circular_refs_add(this, val);
-			}
-		}
-	} else if (value_ishashmap(val)) {
-		struct HashMap_iter at;
-		HashMap_ref hashmap = value_gethashmap(val, NULL);
-
-		for (at = hashmap_iter(hashmap); !hashmap_isend(at);
-				hashmap_next(at)) {
-			if (value_fns(hashmap_valueat(at, NULL)) > 0) {
-				_env_circular_refs_add(this, val);
-			}
-		}
-	} else if (value_isfn(val)) {
-		Fn_ref fn = value_getfn(val, NULL);
-
-		if (fn_closure(fn) == this) {
-			++((MutEnv_ref)this)->circular_refs;
-		}
-	} else {
-		/* something went wrong! */
-		/* TODO: some error reporting here */
-	}
 }

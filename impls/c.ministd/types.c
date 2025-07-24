@@ -72,7 +72,7 @@ string_free(String_own this)
 	if (this->ref_count == 0) {
 		free(this->content);
 		free((own_ptr)this);
-}
+	}
 }
 
 void
@@ -225,14 +225,32 @@ list_tail(List_ref this, usz from_idx, err_t ref err_out)
 }
 List_own
 list_copy(List_ref this)
-{ COPY(List); }
+{
+	/* to make environment cycle counts accurate */
+	if (this->fns > 0) {
+		usz i;
+		for (i = 0; i < this->len; ++i) {
+			value_copy(this->values[i]);
+		}
+	}
+
+	COPY(List);
+}
 void
 list_free(List_own this)
 {
 	FREE_PRELUDE(List);
 
+	/* to make environment cycle counts accurate */
+	if (this->fns > 0) {
+		usz i;
+		for (i = 0; i < this->len; ++i) {
+			value_free(this->values[i]);
+		}
+	}
+
 	if (this->ref_count == 0) {
-		if (this->values != NULL) {
+		if (this->fns == 0 && this->values != NULL) {
 			usz i;
 			for (i = 0; i < this->len; ++i) {
 				value_free(this->values[i]);
@@ -525,14 +543,32 @@ hashmap_deepcopy(HashMap_ref this, err_t ref err_out)
 { return hashmap_new(this->keys, this->values, this->len, err_out); }
 HashMap_own
 hashmap_copy(HashMap_ref this)
-{ COPY(HashMap); }
+{
+	/* to make environment cycle counts accurate */
+	if (this->fns > 0) {
+		usz i;
+		for (i = 0; i < this->len; ++i) {
+			value_copy(this->values[i]);
+		}
+	}
+
+	COPY(HashMap);
+}
 void
 hashmap_free(HashMap_own this)
 {
 	FREE_PRELUDE(HashMap);
 
+	/* to make environment cycle counts accurate */
+	if (this->fns > 0) {
+		usz i;
+		for (i = 0; i < this->len; ++i) {
+			value_free(this->values[i]);
+		}
+	}
+
 	if (this->ref_count == 0) {
-		if (this->keys != NULL) {
+		if (this->fns == 0 && this->keys != NULL) {
 			usz i;
 			for (i = 0; i < this->len; ++i) {
 				string_free(this->keys[i]);
@@ -861,6 +897,8 @@ _hashmap_at_set(struct HashMap_struct own this, HashMap_iter at,
 	return this;
 }
 
+#include "env.h"
+
 struct Fn_struct {
 	bool is_builtin;
 	Env_own closure;
@@ -920,15 +958,21 @@ fn_new(Value_own body, String_own own args, usz n_args, bool variadic,
 }
 Fn_own
 fn_copy(Fn_ref this)
-{ COPY(Fn); }
+{
+	/* to make environment cycle counts accurate */
+	if (this->closure != NULL) (void)env_copy_const(this->closure);
+
+	COPY(Fn);
+}
 void
 fn_free(Fn_own this)
 {
 	FREE_PRELUDE(Fn);
 
-	if (this->ref_count == 0) {
-		env_free(this->closure);
+	/* to make environment cycle counts accurate */
+	if (this->closure != NULL) env_free(this->closure);
 
+	if (this->ref_count == 0) {
 		if (this->is_builtin) {
 			/* nothing to do */
 		} else {
@@ -942,6 +986,57 @@ fn_free(Fn_own this)
 			}
 		}
 	}
+}
+
+bool
+fn_isbuiltin(Fn_ref this)
+{
+	return this->is_builtin;
+}
+builtin_fn
+fn_getbuiltin(Fn_ref this, err_t ref err_out)
+{
+	if (!this->is_builtin) {
+		ERR_WITH(ERR_INVAL, NULL);
+	}
+
+	return this->f.builtin;
+}
+String_ref ref
+fn_getargs(Fn_ref this, err_t ref err_out)
+{
+	if (this->is_builtin) {
+		ERR_WITH(ERR_INVAL, NULL);
+	}
+
+	return this->f.mal.args;
+}
+usz
+fn_getnargs(Fn_ref this, err_t ref err_out)
+{
+	if (this->is_builtin) {
+		ERR_WITH(ERR_INVAL, 0);
+	}
+
+	return this->f.mal.n_args;
+}
+bool
+fn_isvariadic(Fn_ref this, err_t ref err_out)
+{
+	if (this->is_builtin) {
+		ERR_WITH(ERR_INVAL, false);
+	}
+
+	return this->f.mal.variadic;
+}
+Value_ref
+fn_getbody(Fn_ref this, err_t ref err_out)
+{
+	if (this->is_builtin) {
+		ERR_WITH(ERR_INVAL, NULL);
+	}
+
+	return this->f.mal.body;
 }
 
 #include "env.h"

@@ -11,9 +11,9 @@
 #include "types.h"
 #include "values.h"
 
-static Value_own EVAL(Value_own val, MutEnv_ref env, rerr_t ref err_out);
+/* not using `fn_call` anymore, to support tco */
 Value_own (ref fn_EVAL)(Value_own expr, MutEnv_ref env, rerr_t ref err_out)
-	= EVAL;
+	= NULL;
 
 /* `read` is a function in `ministd_fmt.h`...
  * I should either add optional prefixes to all ministd functions,
@@ -37,6 +37,14 @@ READ(const char ref line)
 	return val;
 }
 
+struct tailcall_info {
+	Value_own val;
+	MutEnv_own env;
+	bool tailcall;
+};
+static struct tailcall_info TAILCALL_NULL = { NULL, NULL, false };
+
+static Value_own EVAL(Value_own val, MutEnv_own env, rerr_t ref err_out);
 static List_own
 eval_each(List_ref list, MutEnv_ref env, rerr_t ref err_out)
 {
@@ -50,7 +58,7 @@ eval_each(List_ref list, MutEnv_ref env, rerr_t ref err_out)
 	for (at = list_iter(list); !list_isend(at); at = list_next(at)) {
 		Value_own val;
 
-		val = EVAL(value_copy(list_at(at, NULL)), env, &err);
+		val = EVAL(value_copy(list_at(at, NULL)), env_copy(env), &err);
 		if (!rerr_is_ok(err)) {
 			list_free(res);
 			RERR_WITH(err, NULL);
@@ -66,72 +74,120 @@ eval_each(List_ref list, MutEnv_ref env, rerr_t ref err_out)
 
 	return res;
 }
-static Value_own
+static struct tailcall_info
+call_fn(Fn_ref fn, List_own args, rerr_t ref err_out)
+{
+	rerr_t err = RERR_OK;
+	Env_own outer;
+	MutEnv_own env;
+	struct tailcall_info res;
+
+	outer = fn_closure(fn) == NULL ? NULL : env_copy_const(fn_closure(fn));
+	env = env_new(outer, &err.e.errt);
+	RTRY_WITH(err, TAILCALL_NULL);
+
+	if (fn_isbuiltin(fn)) {
+		Value_own val;
+		val = fn_getbuiltin(fn, NULL)(args, env, &err);
+		if (!rerr_is_ok(err)) {
+			env_free(env);
+			RERR_WITH(err, TAILCALL_NULL);
+		}
+
+		res.env = NULL;
+		res.val = val;
+		res.tailcall = false;
+
+		env_free(env);
+
+		return res;
+	} else {
+		env_bind(
+			env,
+			fn_getargs(fn, NULL),
+			fn_getnargs(fn, NULL),
+			fn_isvariadic(fn, NULL),
+			args,
+			&err
+		);
+		if (!rerr_is_ok(err)) {
+			env_free(env);
+			RERR_WITH(err, TAILCALL_NULL);
+		}
+
+		res.env = env;
+		res.val = value_copy(fn_getbody(fn, NULL));
+		res.tailcall = true;
+
+		return res;
+	}
+}
+static struct tailcall_info
 eval_fn(Value_own head, List_own args, MutEnv_ref env, rerr_t ref err_out)
 {
 	rerr_t err = RERR_OK;
 	Value_own fn;
 	List_own evald_args;
 
-	fn = EVAL(head, env, &err);
+	fn = EVAL(head, env_copy(env), &err);
 	if (!rerr_is_ok(err)) {
 		list_free(args);
-		RERR_WITH(err, NULL);
+		RERR_WITH(err, TAILCALL_NULL);
 	}
 	evald_args = eval_each(args, env, &err);
+	list_free(args);
 	if (!rerr_is_ok(err)) {
-		list_free(args);
 		value_free(fn);
-		RERR_WITH(err, NULL);
+		RERR_WITH(err, TAILCALL_NULL);
 	}
 
 	switch (value_type(fn)) {
 		case VT_SYM: {
 			err = rerr_uncallable("symbol");
-			ERR_WITH(err, NULL);
+			ERR_WITH(err, TAILCALL_NULL);
 		break; }
 		case VT_NUM: {
 			err = rerr_uncallable("number");
-			ERR_WITH(err, NULL);
+			ERR_WITH(err, TAILCALL_NULL);
 		break; }
 		case VT_LST: {
 			err = rerr_uncallable("list");
-			ERR_WITH(err, NULL);
+			ERR_WITH(err, TAILCALL_NULL);
 		break; }
 		case VT_STR: {
 			err = rerr_uncallable("string");
-			ERR_WITH(err, NULL);
+			ERR_WITH(err, TAILCALL_NULL);
 		break; }
 		case VT_NIL: {
 			err = rerr_uncallable("nil");
-			ERR_WITH(err, NULL);
+			ERR_WITH(err, TAILCALL_NULL);
 		break; }
 		case VT_BOO: {
 			err = rerr_uncallable("bool");
-			ERR_WITH(err, NULL);
+			ERR_WITH(err, TAILCALL_NULL);
 		break; }
 		case VT_KEY: {
 			err = rerr_uncallable("keyword");
-			ERR_WITH(err, NULL);
+			ERR_WITH(err, TAILCALL_NULL);
 		break; }
 		case VT_VEC: {
 			err = rerr_uncallable("vector");
-			ERR_WITH(err, NULL);
+			ERR_WITH(err, TAILCALL_NULL);
 		break; }
 		case VT_MAP: {
 			err = rerr_uncallable("hash-map");
-			ERR_WITH(err, NULL);
+			ERR_WITH(err, TAILCALL_NULL);
 		break; }
 		case VT_FNC: {
-			Value_own res;
-			res = fn_call(value_getfn(fn, NULL), evald_args, &err);
+			struct tailcall_info res;
+			res = call_fn(value_getfn(fn, NULL), evald_args, &err);
 			value_free(fn);
-			RTRY_WITH(err, NULL);
+			RTRY_WITH(err, TAILCALL_NULL);
 			return res;
 		break; }
 	}
 
-	return NULL;
+	return TAILCALL_NULL;
 }
 
 static Value_own
@@ -156,7 +212,7 @@ eval_def(List_own args, MutEnv_ref env, rerr_t ref err_out)
 		RERR_WITH(err, NULL);
 	}
 
-	value = EVAL(value, env, &err);
+	value = EVAL(value, env_copy(env), &err);
 	if (!rerr_is_ok(err)) {
 		value_free(name);
 		RERR_WITH(err, NULL);
@@ -176,7 +232,7 @@ eval_def(List_own args, MutEnv_ref env, rerr_t ref err_out)
 
 	return value;
 }
-static Value_own
+static struct tailcall_info
 eval_let(List_own args, MutEnv_ref env, rerr_t ref err_out)
 {
 	rerr_t err = RERR_OK;
@@ -184,12 +240,13 @@ eval_let(List_own args, MutEnv_ref env, rerr_t ref err_out)
 	List_ref lbindings;
 	MutEnv_own subenv;
 	usz i;
-	Value_own res;
+	struct tailcall_info res;
+	res.tailcall = true;
 
 	if (list_len(args) != 2) {
 		err = rerr_arg_len_mismatch(2, list_len(args));
 		list_free(args);
-		RERR_WITH(err, NULL);
+		RERR_WITH(err, TAILCALL_NULL);
 	}
 
 	bindings = value_copy(list_nth(args, 0, NULL));
@@ -199,7 +256,7 @@ eval_let(List_own args, MutEnv_ref env, rerr_t ref err_out)
 		err = rerr_arg_type_mismatch(bindings, 1, "list");
 		value_free(bindings);
 		value_free(expr);
-		RERR_WITH(err, NULL);
+		RERR_WITH(err, TAILCALL_NULL);
 	}
 	lbindings = value_getlist(bindings, NULL);
 
@@ -207,14 +264,14 @@ eval_let(List_own args, MutEnv_ref env, rerr_t ref err_out)
 		value_free(bindings);
 		value_free(expr);
 		err = rerr_msg("let* expected an even number of elements in the bind list, got an odd number");
-		RERR_WITH(err, NULL);
+		RERR_WITH(err, TAILCALL_NULL);
 	}
 
 	subenv = env_new(env_copy(env), &err.e.errt);
 	if (!rerr_is_ok(err)) {
 		value_free(bindings);
 		value_free(expr);
-		ERR_WITH(err, NULL);
+		ERR_WITH(err, TAILCALL_NULL);
 	}
 
 	for (i = 0; i < list_len(lbindings)/2; ++i) {
@@ -229,15 +286,15 @@ eval_let(List_own args, MutEnv_ref env, rerr_t ref err_out)
 			value_free(bindings);
 			value_free(expr);
 			env_free(subenv);
-			ERR_WITH(err, NULL);
+			ERR_WITH(err, TAILCALL_NULL);
 		}
 
-		evald = EVAL(value_copy(val), subenv, &err);
+		evald = EVAL(value_copy(val), env_copy(subenv), &err);
 		if (!rerr_is_ok(err)) {
 			value_free(bindings);
 			value_free(expr);
 			env_free(subenv);
-			ERR_WITH(err, NULL);
+			ERR_WITH(err, TAILCALL_NULL);
 		}
 
 		env_set(
@@ -250,88 +307,95 @@ eval_let(List_own args, MutEnv_ref env, rerr_t ref err_out)
 			value_free(bindings);
 			value_free(expr);
 			env_free(subenv);
-			ERR_WITH(err, NULL);
+			ERR_WITH(err, TAILCALL_NULL);
 		}
 	}
 
 	value_free(bindings);
 
-	res = EVAL(expr, subenv, &err);
-	env_free(subenv);
-	RTRY_WITH(err, NULL);
+	res.env = subenv;
+	res.val = expr;
 	return res;
 }
-static Value_own
+static struct tailcall_info
 eval_do(List_own args, MutEnv_ref env, rerr_t ref err_out)
 {
 	rerr_t err = RERR_OK;
 	List_iter at;
 	Value_own last = NULL;
+	struct tailcall_info res;
+	res.env = NULL;
+	res.tailcall = true;
 
 	if (list_len(args) == 0) {
 		err = rerr_arg_vararg_mismatch(1, 0);
 		list_free(args);
-		RERR_WITH(err, NULL);
+		RERR_WITH(err, TAILCALL_NULL);
 	}
 
 	for (at = list_iter(args); !list_isend(at); at = list_next(at)) {
-		if (last != NULL) value_free(last);
-		last = EVAL(value_copy(list_at(at, NULL)), env, &err);
-
-		if (!rerr_is_ok(err)) {
-			list_free(args);
-			RERR_WITH(err, NULL);
+		if (last != NULL) {
+			Value_own val;
+			val = EVAL(last, env_copy(env), &err);
+			if (!rerr_is_ok(err)) {
+				list_free(args);
+				RERR_WITH(err, TAILCALL_NULL);
+			}
+			value_free(val);
 		}
+		last = value_copy(list_at(at, NULL));
 	}
 
 	list_free(args);
 
-	return last;
+	res.val = last;
+
+	return res;
 }
-static Value_own
+static struct tailcall_info
 eval_if(List_own args, MutEnv_ref env, rerr_t ref err_out)
 {
 	rerr_t err = RERR_OK;
 	Value_own cond;
-	Value_own res;
+	struct tailcall_info res;
+	res.env = NULL;
+	res.tailcall = true;
 
 	if (list_len(args) < 2) {
 		err = rerr_arg_vararg_mismatch(2, list_len(args));
 		list_free(args);
-		RERR_WITH(err, NULL);
+		RERR_WITH(err, TAILCALL_NULL);
 	}
 	if (list_len(args) > 3) {
 		err = rerr_arg_len_mismatch(3, list_len(args));
 		list_free(args);
-		RERR_WITH(err, NULL);
+		RERR_WITH(err, TAILCALL_NULL);
 	}
 
-	cond = EVAL(value_copy(list_nth(args, 0, NULL)), env, &err);
+	cond = EVAL(value_copy(list_nth(args, 0, NULL)), env_copy(env), &err);
 	if (!rerr_is_ok(err)) {
 		list_free(args);
-		RERR_WITH(err, NULL);
+		RERR_WITH(err, TAILCALL_NULL);
 	}
 
 	if (!value_isnil(cond) && (!value_isbool(cond)
 			|| value_getbool(cond, NULL) != false)) {
 		value_free(cond);
-		res = EVAL(value_copy(list_nth(args, 1, NULL)), env, &err);
+		res.val = value_copy(list_nth(args, 1, NULL));
 		list_free(args);
-		RTRY_WITH(err, NULL);
 
 		return res;
 	} else if (list_len(args) == 3) {
 		value_free(cond);
-		res = EVAL(value_copy(list_nth(args, 2, NULL)), env, &err);
+		res.val = value_copy(list_nth(args, 2, NULL));
 		list_free(args);
-		RTRY_WITH(err, NULL);
 
 		return res;
 	} else {
 		value_free(cond);
 		list_free(args);
-		res = value_nil(&err.e.errt);
-		RTRY_WITH(err, NULL);
+		res.val = value_nil(&err.e.errt);
+		RTRY_WITH(err, TAILCALL_NULL);
 
 		return res;
 	}
@@ -414,114 +478,160 @@ eval_lambda(List_own args, MutEnv_ref env, rerr_t ref err_out)
 }
 
 static Value_own
-EVAL(Value_own val, MutEnv_ref env, rerr_t ref err_out)
+EVAL(Value_own val, MutEnv_own env, rerr_t ref err_out)
 {
 	rerr_t err = RERR_OK;
 	static String_own debug_key = NULL;
 	Value_own debug;
+	struct tailcall_info tci;
+	Value_own res;
 
 	if (debug_key == NULL) {
 		debug_key = string_new("DEBUG-EVAL", NULL);
 	}
-	debug = env_get(env, debug_key, &err.e.errt);
-	if (!rerr_is_ok(err)) {
-		rerr_deinit(err);
-		err = RERR_OK;
-		debug = NULL;
-	}
-	if (debug != NULL && !value_isnil(debug) && (!value_isbool(debug)
-			|| value_getbool(debug, NULL))) {
-		const char own repr = pr_str(val, 1, &err.e.errt);
+
+	for (;;) {
+		debug = env_get(env, debug_key, &err.e.errt);
 		if (!rerr_is_ok(err)) {
-			value_free(val);
-			ERR_WITH(err, NULL);
+			rerr_deinit(err);
+			err = RERR_OK;
+			debug = NULL;
 		}
+		if (debug != NULL && !value_isnil(debug) && (!value_isbool(debug)
+				|| value_getbool(debug, NULL))) {
+			const char own repr = pr_str(val, 1, &err.e.errt);
+			if (!rerr_is_ok(err)) {
+				value_free(val);
+				env_free(env);
+				ERR_WITH(err, NULL);
+			}
 
-		fprints("EVAL: ", stderr, &err.e.errt);
-		if (!rerr_is_ok(err)) {
-			value_free(val);
-			ERR_WITH(err, NULL);
-		}
-		fprints(repr, stderr, &err.e.errt);
-		if (!rerr_is_ok(err)) {
-			value_free(val);
-			ERR_WITH(err, NULL);
-		}
-		fprintc('\n', stderr, &err.e.errt);
-		if (!rerr_is_ok(err)) {
-			value_free(val);
-			ERR_WITH(err, NULL);
-		}
-	}
-
-	if (value_islist(val)) {
-		List_ref list = value_getlist(val, NULL);
-		Value_own head;
-		List_own tail;
-
-		if (list_len(list) == 0) {
-			return val;
-		}
-		head = value_copy(list_nth(list, 0, &err.e.errt));
-		if (!rerr_is_ok(err)) {
-			value_free(val);
-			ERR_WITH(err, NULL);
-		}
-		tail = list_tail(list, 1, &err.e.errt);
-		if (!rerr_is_ok(err)) {
-			value_free(val);
-			value_free(head);
-			ERR_WITH(err, NULL);
-		}
-
-		value_free(val);
-
-		if (value_issymbol(head)) {
-			String_ref fnname = value_getsymbol(head, NULL);
-			if (string_match(fnname, "def!") == C_EQ) {
-				value_free(head);
-
-				return eval_def(tail, env, err_out);
-			} else if (string_match(fnname, "let*") == C_EQ) {
-				value_free(head);
-
-				return eval_let(tail, env, err_out);
-			} else if (string_match(fnname, "do") == C_EQ) {
-				value_free(head);
-
-				return eval_do(tail, env, err_out);
-			} else if (string_match(fnname, "if") == C_EQ) {
-				value_free(head);
-
-				return eval_if(tail, env, err_out);
-			} else if (string_match(fnname, "fn*") == C_EQ) {
-				value_free(head);
-
-				return eval_lambda(tail, env, err_out);
+			fprints("EVAL: ", stderr, &err.e.errt);
+			if (!rerr_is_ok(err)) {
+				value_free(val);
+				env_free(env);
+				ERR_WITH(err, NULL);
+			}
+			fprints(repr, stderr, &err.e.errt);
+			if (!rerr_is_ok(err)) {
+				value_free(val);
+				env_free(env);
+				ERR_WITH(err, NULL);
+			}
+			fprintc('\n', stderr, &err.e.errt);
+			if (!rerr_is_ok(err)) {
+				value_free(val);
+				env_free(env);
+				ERR_WITH(err, NULL);
 			}
 		}
 
-		return eval_fn(head, tail, env, err_out);
-	} else if (value_issymbol(val)) {
-		Value_ref res = env_get(
-			env,
-			value_getsymbol(val, NULL),
-			&err.e.errt
-		);
-		if (err.is_errt && err.e.errt == ERR_INVAL) {
-			/* symbol not in env */
-			err = rerr_undefined_name(value_getsymbol(val, NULL));
-			value_free(val);
-			ERR_WITH(err, NULL);
-		} else if (!rerr_is_ok(err)) {
-			value_free(val);
-			ERR_WITH(err, NULL);
-		}
-		value_free(val);
+		if (value_islist(val)) {
+			List_ref list = value_getlist(val, NULL);
+			Value_own head;
+			List_own tail;
 
-		return value_copy(res);
-	} else {
-		return val;
+			if (list_len(list) == 0) {
+				env_free(env);
+				return val;
+			}
+			head = value_copy(list_nth(list, 0, &err.e.errt));
+			if (!rerr_is_ok(err)) {
+				value_free(val);
+				env_free(env);
+				ERR_WITH(err, NULL);
+			}
+			tail = list_tail(list, 1, &err.e.errt);
+			if (!rerr_is_ok(err)) {
+				value_free(val);
+				value_free(head);
+				env_free(env);
+				ERR_WITH(err, NULL);
+			}
+
+			value_free(val);
+
+			#define TCO() { \
+					if (!rerr_is_ok(err)) { \
+						env_free(env); \
+						RERR_WITH(err, NULL); \
+					} \
+					if (tci.env != NULL) { \
+						env_free(env); \
+						env = tci.env; \
+					} \
+					val = tci.val; \
+					if (tci.tailcall) continue; \
+					else { \
+						env_free(env); \
+						return val; \
+					} \
+					fprints("Something went horribly wrong!", stderr, NULL); \
+					exit(1); \
+				} do {} while (0)
+			if (value_issymbol(head)) {
+				String_ref fnname = value_getsymbol(head, NULL);
+				if (string_match(fnname, "def!") == C_EQ) {
+					value_free(head);
+
+					res = eval_def(tail, env, &err);
+					env_free(env);
+					RTRY_WITH(err, NULL);
+					return res;
+				} else if (string_match(fnname, "let*") == C_EQ) {
+					value_free(head);
+
+					tci = eval_let(tail, env, &err);
+					TCO();
+				} else if (string_match(fnname, "do") == C_EQ) {
+					value_free(head);
+
+					tci = eval_do(tail, env, &err);
+					TCO();
+				} else if (string_match(fnname, "if") == C_EQ) {
+					value_free(head);
+
+					tci = eval_if(tail, env, &err);
+					TCO();
+				} else if (string_match(fnname, "fn*") == C_EQ) {
+					value_free(head);
+
+					res = eval_lambda(tail, env, &err);
+					env_free(env);
+					RTRY_WITH(err, NULL);
+					return res;
+				}
+			}
+
+			tci = eval_fn(head, tail, env, &err);
+			TCO();
+		} else if (value_issymbol(val)) {
+			Value_ref res_ref = env_get(
+				env,
+				value_getsymbol(val, NULL),
+				&err.e.errt
+			);
+			Value_own res;
+			if (err.is_errt && err.e.errt == ERR_INVAL) {
+				/* symbol not in env */
+				err = rerr_undefined_name(value_getsymbol(val, NULL));
+				value_free(val);
+				env_free(env);
+				ERR_WITH(err, NULL);
+			} else if (!rerr_is_ok(err)) {
+				value_free(val);
+				env_free(env);
+				ERR_WITH(err, NULL);
+			}
+			value_free(val);
+
+			res = value_copy(res_ref);
+			env_free(env);
+			return res;
+		} else {
+			env_free(env);
+			return val;
+		}
 	}
 }
 
@@ -552,7 +662,7 @@ rep(const char ref line, MutEnv_ref env)
 	if (read_res != NULL) {
 		rerr_t err = RERR_OK;
 
-		eval_res = EVAL(read_res, env, &err);
+		eval_res = EVAL(read_res, env_copy(env), &err);
 		if (!rerr_is_ok(err)) {
 			rerr_display(&err, stderr, NULL);
 			fprintc('\n', stderr, NULL);

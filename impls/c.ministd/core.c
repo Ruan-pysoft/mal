@@ -157,7 +157,7 @@ prn(List_own args, MutEnv_ref env, rerr_t ref err_out)
 	fprintc('\n', stdout, &err.e.errt);
 	RTRY_WITH(err, NULL);
 
-	return nil;
+	return value_copy(nil);
 }
 static Value_own
 list(List_own args, MutEnv_ref env, rerr_t ref err_out)

@@ -170,13 +170,16 @@ Cycles could possibly occur in one of the two following circumstances:
       all of its members (including child environments)
       should be checked for circular references.
       This should then be taken in to account.
+   3. Keep a global list of allocated environments,
+      and periodically check each environment in that list for cycles,
+      free it if there are only ciclical references.
 
-   I think I will go with method 1.,
-   as I suspect that the runtime costs of 2. will be excessive
-   (besides also making the free function complex with unpredictable runtime cost,
-   as opposed to essentially constant-time when the resources are not released)
-   and will incur a large complexity cost
-   (by, for example, having to keep track of all child environments).
+   Initially I wanted to go with method one,
+   but I have found it to be excessively difficult,
+   consistently either leaking memory or freeing memory early
+   on various edgecases.
+
+   As such, I have now decided to switch to method three.
 
 # Lists
 

@@ -369,6 +369,9 @@ main(void)
 		}
 		if (*linebuf == 0) {
 			/* hit eof */
+
+			env_free(repl_env);
+
 			return 0;
 		}
 		out = rep(linebuf, repl_env);

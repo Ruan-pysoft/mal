@@ -182,6 +182,7 @@ eval_let(List_own args, MutEnv_ref env, rerr_t ref err_out)
 	List_ref lbindings;
 	MutEnv_own subenv;
 	usz i;
+	Value_own res;
 
 	if (list_len(args) != 2) {
 		err = rerr_arg_len_mismatch(2, list_len(args));
@@ -207,7 +208,7 @@ eval_let(List_own args, MutEnv_ref env, rerr_t ref err_out)
 		RERR_WITH(err, NULL);
 	}
 
-	subenv = env_new(env, &err.e.errt);
+	subenv = env_new(env_copy(env), &err.e.errt);
 	if (!rerr_is_ok(err)) {
 		value_free(bindings);
 		value_free(expr);
@@ -253,7 +254,10 @@ eval_let(List_own args, MutEnv_ref env, rerr_t ref err_out)
 
 	value_free(bindings);
 
-	return EVAL(expr, subenv, err_out);
+	res = EVAL(expr, subenv, &err);
+	env_free(subenv);
+	RTRY_WITH(err, NULL);
+	return res;
 }
 
 static Value_own
@@ -467,12 +471,12 @@ main(void)
 	const char own out;
 	MutEnv_own repl_env = env_new(NULL, NULL);
 
-	env_set(
+	/*env_set(
 		repl_env,
 		string_new("DEBUG-EVAL", NULL),
 		value_bool(true, NULL),
 		NULL
-	);
+	);*/
 	env_set(
 		repl_env,
 		string_new("+", NULL),
@@ -506,6 +510,9 @@ main(void)
 		}
 		if (*linebuf == 0) {
 			/* hit eof */
+
+			env_free(repl_env);
+
 			return 0;
 		}
 		out = rep(linebuf, repl_env);

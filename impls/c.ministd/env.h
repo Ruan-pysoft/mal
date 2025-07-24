@@ -10,6 +10,8 @@ MutEnv_own env_copy(MutEnv_ref this);
 Env_own env_copy_const(Env_ref this);
 void env_free(Env_own this);
 
+void env_free_cycles(void);
+
 /* no. of values in environment */
 usz env_size(Env_ref this);
 bool env_contains(Env_ref this, String_ref var);
