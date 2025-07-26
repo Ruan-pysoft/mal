@@ -12,6 +12,7 @@ struct Value_struct {
 		bool boo;
 		HashMap_own map;
 		Fn_own fnc;
+		MutAtom_own atm;
 	} v;
 
 	usz fns;
@@ -173,6 +174,21 @@ value_fn(Fn_own fn, err_t ref err_out)
 	return res;
 }
 Value_own
+value_atom(MutAtom_own atom, err_t ref err_out)
+{
+	err_t err = ERR_OK;
+	struct Value_struct own res = _value_alloc(VT_ATM, &err);
+	if (err != ERR_OK) {
+		atom_free(atom);
+		ERR_WITH(err, NULL);
+	}
+
+	res->fns = atom_fns(atom);
+	res->v.atm = atom;
+
+	return res;
+}
+Value_own
 value_copy(Value_ref this)
 {
 	++((struct Value_struct ref)this)->ref_count;
@@ -196,6 +212,9 @@ value_copy(Value_ref this)
 		break; }
 		case VT_FNC: {
 			fn_copy(this->v.fnc);
+		break; }
+		case VT_ATM: {
+			atom_copy(this->v.atm);
 		break; }
 	}
 
@@ -234,6 +253,9 @@ value_free(Value_own this)
 		case VT_FNC: {
 			fn_free(this->v.fnc);
 		break; }
+		case VT_ATM: {
+			atom_free(this->v.atm);
+		break; }
 	}
 	if (this->ref_count == 0) {
 		free((own_ptr)this);
@@ -269,6 +291,11 @@ value_iseq(Value_ref this, Value_ref other)
 		case VT_FNC: {
 			return fn_iseq(this->v.fnc, other->v.fnc);
 		break; }
+		case VT_ATM: {
+			/* only consider atoms equal
+			 * if they are literally the same value in memory */
+			return this->v.atm == other->v.atm;
+		}
 	}
 
 	/* WARN: execution should never reach this point
@@ -281,15 +308,17 @@ value_print(Value_ref this, bool repr, FILE ref file, err_t ref err_out)
 {
 	switch (this->type) {
 		case VT_SYM:
-		case VT_STR:
 		case VT_KEY: {
-			string_print(this->v.str, repr, file, err_out);
+			string_print(this->v.str, false, file, err_out);
 		break; }
 		case VT_NUM: {
 			fprinti(this->v.num, file, err_out);
 		break; }
 		case VT_LST: {
-			list_print(this->v.lst, '(', ')', file, err_out);
+			list_print(this->v.lst, repr, '(', ')', file, err_out);
+		break; }
+		case VT_STR: {
+			string_print(this->v.str, repr, file, err_out);
 		break; }
 		case VT_NIL: {
 			fprints("nil", file, err_out);
@@ -298,13 +327,16 @@ value_print(Value_ref this, bool repr, FILE ref file, err_t ref err_out)
 			fprints(this->v.boo ? "true" : "false", file, err_out);
 		break; }
 		case VT_VEC: {
-			list_print(this->v.lst, '[', ']', file, err_out);
+			list_print(this->v.lst, repr, '[', ']', file, err_out);
 		break; }
 		case VT_MAP: {
-			hashmap_print(this->v.map, file, err_out);
+			hashmap_print(this->v.map, repr, file, err_out);
 		break; }
 		case VT_FNC: {
 			fn_print(this->v.fnc, file, err_out);
+		break; }
+		case VT_ATM: {
+			atom_print(this->v.atm, file, err_out);
 		break; }
 	}
 }
@@ -362,6 +394,11 @@ bool
 value_isfn(Value_ref this)
 {
 	return this->type == VT_FNC;
+}
+bool
+value_isatom(Value_ref this)
+{
+	return this->type == VT_ATM;
 }
 String_ref
 value_getsymbol(Value_ref this, err_t ref err_out)
@@ -443,6 +480,15 @@ value_getfn(Value_ref this, err_t ref err_out)
 	}
 
 	return this->v.fnc;
+}
+MutAtom_ref
+value_getatom(Value_ref this, err_t ref err_out)
+{
+	if (!value_isatom(this)) {
+		ERR_WITH(ERR_INVAL, NULL);
+	}
+
+	return this->v.atm;
 }
 usz
 value_fns(Value_ref this)

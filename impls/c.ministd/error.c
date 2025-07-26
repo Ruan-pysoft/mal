@@ -497,3 +497,49 @@ rerr_msg(const char ref msg)
 
 	return res;
 }
+rerr_t
+rerr_perr(perr_t err)
+{
+	String own str;
+	FILE own file;
+	char own cstr;
+	rerr_t res = RERR_OK;
+
+	str = s_new(&res.e.errt);
+	if (!rerr_is_ok(res)) return res;
+	file = (FILE own)sf_open(str, &res.e.errt);
+	if (!rerr_is_ok(res)) {
+		close(file, NULL);
+		free(file);
+		return res;
+	}
+
+	perr_display(&err, file, &res.e.errt);
+	perr_deinit(err);
+	if (!rerr_is_ok(res)) {
+		close(file, NULL);
+		free(file);
+		s_free(str);
+		return res;
+	}
+
+	close(file, &res.e.errt);
+	free(file);
+	if (!rerr_is_ok(res)) {
+		s_free(str);
+		return res;
+	}
+
+	cstr = nalloc(sizeof(char), s_len(str)+1, &res.e.errt);
+	if (!rerr_is_ok(res)) {
+		s_free(str);
+		return res;
+	}
+	memmove(cstr, s_to_c(str), sizeof(char) * (s_len(str)+1));
+
+	res.is_errt = false;
+	res.e.msg = cstr;
+
+	s_free(str);
+	return res;
+}

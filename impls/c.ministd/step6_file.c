@@ -11,9 +11,15 @@
 #include "types.h"
 #include "values.h"
 
-/* not using `fn_call` anymore, to support tco */
+static Value_own EVAL(Value_own val, MutEnv_own env, rerr_t ref err_out);
+static Value_own
+fn_EVAL_wrapper(Value_own val, MutEnv_own env, rerr_t ref err_out)
+{
+	return EVAL(val, env_copy(env), err_out);
+}
+/* using `fn_call` again, to support swap! */
 Value_own (ref fn_EVAL)(Value_own expr, MutEnv_ref env, rerr_t ref err_out)
-	= NULL;
+	= fn_EVAL_wrapper;
 
 /* `read` is a function in `ministd_fmt.h`...
  * I should either add optional prefixes to all ministd functions,
@@ -685,6 +691,28 @@ rep(const char ref line, MutEnv_ref env)
 	}
 }
 
+MutEnv_own repl_env;
+static Value_own
+mal_eval(List_own args, MutEnv_ref env, rerr_t ref err_out)
+{
+	rerr_t err = RERR_OK;
+	Value_ref arg;
+
+	(void)env;
+
+	if (list_len(args) != 1) {
+		err = rerr_arg_len_mismatch(1, list_len(args));
+		list_free(args);
+		RERR_WITH(err, NULL);
+	}
+
+	arg = value_copy(list_nth(args, 0, NULL));
+
+	list_free(args);
+
+	return EVAL(arg, env_copy(repl_env), err_out);
+}
+
 #define LINECAP (16 * 1024)
 static char linebuf[LINECAP];
 
@@ -692,7 +720,8 @@ int
 main(void)
 {
 	const char own out;
-	MutEnv_own repl_env = env_new(NULL, NULL);
+
+	repl_env = env_new(NULL, NULL);
 
 	/*env_set(
 		repl_env,
@@ -703,6 +732,20 @@ main(void)
 	core_load(repl_env, NULL);
 
 	free((own_ptr)rep("(def! not (fn* (a) (if a false true)))", repl_env));
+
+	{
+		String_own name;
+		Fn_own func;
+		Value_own value;
+
+		name = string_new("eval", NULL);
+		func = fn_builtin(mal_eval, NULL, NULL);
+		value = value_fn(func, NULL);
+
+		env_set(repl_env, name, value, NULL);
+	}
+
+	free((own_ptr)rep("(def! load-file (fn* (f) (eval (read-string (str \"(do \" (slurp f) \"\nnil)\")))))", repl_env));
 
 	for (;;) {
 		prints("user> ", NULL);

@@ -44,6 +44,7 @@ enum CMP string_cmp(String_ref this, String_ref other);
 enum CMP string_match(String_ref this, const char ref to);
 String_own _string_append(struct String_struct own this, const char ref cstr,
 			  err_t ref err_out);
+const char ref _string_cstr(String_ref this);
 
 /* list of values */
 typedef const struct List_struct own List_own;
@@ -55,7 +56,7 @@ List_own list_copy(List_ref this);
 void list_free(List_own this);
 
 bool list_iseq(List_ref this, List_ref other);
-void list_print(List_ref this, char open, char close, FILE ref file,
+void list_print(List_ref this, bool repr, char open, char close, FILE ref file,
 		err_t ref err_out);
 usz list_len(List_ref this);
 /* error with ERR_INVAL for n >= list_len(this) */
@@ -63,6 +64,8 @@ Value_ref list_nth(List_ref this, usz n, err_t ref err_out);
 usz list_fns(List_ref this);
 List_own _list_extend(struct List_struct own this, Value_ref ref values,
 		      usz n_values, err_t ref err_out);
+List_own _list_join(struct List_struct own this, List_ref other, usz from,
+		    err_t ref err_out);
 List_own _list_append(struct List_struct own this, Value_own value,
 		      err_t ref err_out);
 /* error with ERR_INVAL for idx >= list_len(this) */
@@ -94,7 +97,8 @@ HashMap_own hashmap_copy(HashMap_ref this);
 void hashmap_free(HashMap_own this);
 
 bool hashmap_iseq(HashMap_ref this, HashMap_ref other);
-void hashmap_print(HashMap_ref this, FILE ref file, err_t ref err_out);
+void hashmap_print(HashMap_ref this, bool repr, FILE ref file,
+		   err_t ref err_out);
 /* no. of key/value pairs in hash-map */
 usz hashmap_size(HashMap_ref this);
 bool hashmap_contains(HashMap_ref this, String_ref key);
@@ -162,5 +166,18 @@ extern Value_own (ref fn_EVAL)(Value_own expr, MutEnv_ref env,
 			       rerr_t ref err_out);
 Value_own fn_call(Fn_ref this, List_own args, rerr_t ref err_out);
 Env_ref fn_closure(Fn_ref this);
+
+typedef struct Atom_struct own MutAtom_own;
+typedef struct Atom_struct ref MutAtom_ref;
+typedef const struct Atom_struct own Atom_own;
+typedef const struct Atom_struct ref Atom_ref;
+MutAtom_own atom_new(Value_ref val, err_t ref err_out);
+MutAtom_own atom_copy(MutAtom_ref this);
+void atom_free(Atom_own this);
+
+void atom_print(Atom_ref this, FILE ref file, err_t ref err_out);
+Value_ref atom_get(Atom_ref this);
+void atom_set(MutAtom_ref this, Value_ref val);
+usz atom_fns(Atom_ref this);
 
 #endif /* TYPES_H */

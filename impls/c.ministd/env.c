@@ -124,7 +124,7 @@ _env_count_circrefs_at(Env_ref this, Value_ref val)
 		struct List_iter at;
 		List_ref list = value_getlist(val, NULL);
 
-		for (at = list_iter(list); !list_isend(at); list_next(at)) {
+		for (at = list_iter(list); !list_isend(at); at = list_next(at)) {
 			Value_ref v = list_at(at, NULL);
 			if (value_fns(v) > 0) {
 				count += _env_count_circrefs_at(this, v);
@@ -136,7 +136,7 @@ _env_count_circrefs_at(Env_ref this, Value_ref val)
 		struct List_iter at;
 		List_ref list = value_getvector(val, NULL);
 
-		for (at = list_iter(list); !list_isend(at); list_next(at)) {
+		for (at = list_iter(list); !list_isend(at); at = list_next(at)) {
 			Value_ref v = list_at(at, NULL);
 			if (value_fns(v) > 0) {
 				count += _env_count_circrefs_at(this, v);
@@ -149,7 +149,7 @@ _env_count_circrefs_at(Env_ref this, Value_ref val)
 		HashMap_ref hashmap = value_gethashmap(val, NULL);
 
 		for (at = hashmap_iter(hashmap); !hashmap_isend(at);
-				hashmap_next(at)) {
+				at = hashmap_next(at)) {
 			Value_ref v = hashmap_valueat(at, NULL);
 			if (value_fns(v) > 0) {
 				count += _env_count_circrefs_at(this, v);

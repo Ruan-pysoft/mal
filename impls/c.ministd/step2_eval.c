@@ -128,6 +128,10 @@ eval_fn(Value_own head, List_own args, MutEnv_ref env, rerr_t ref err_out)
 			RTRY_WITH(err, NULL);
 			return res;
 		break; }
+		case VT_ATM: {
+			err = rerr_uncallable("atom");
+			ERR_WITH(err, NULL);
+		break; }
 	}
 
 	return NULL;

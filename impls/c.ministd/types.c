@@ -78,9 +78,29 @@ string_free(String_own this)
 void
 string_print(String_ref this, bool repr, FILE ref file, err_t ref err_out)
 {
-	(void)repr; /* TODO: implement repr-printing */
+	if (!repr) {
+		fprints(this->content, file, err_out);
+	} else {
+		err_t err = ERR_OK;
+		usz i;
 
-	fprints(this->content, file, err_out);
+		fprintc('"', file, &err);
+		TRY_VOID(err);
+		for (i = 0; i < this->len; ++i) {
+			if (this->content[i] == '"') {
+				fprints("\\\"", file, &err);
+			} else if (this->content[i] == '\n') {
+				fprints("\\n", file, &err);
+			} else if (this->content[i] == '\\') {
+				fprints("\\\\", file, &err);
+			} else {
+				fprintc(this->content[i], file, &err);
+			}
+			TRY_VOID(err);
+		}
+		fprintc('"', file, &err);
+		TRY_VOID(err);
+	}
 }
 usz
 string_len(String_ref this)
@@ -170,6 +190,11 @@ _string_append(struct String_struct own this, const char ref cstr,
 	this->len += len;
 
 	return this;
+}
+const char ref
+_string_cstr(String_ref this)
+{
+	return this->content;
 }
 
 struct List_struct {
@@ -278,7 +303,7 @@ list_iseq(List_ref this, List_ref other)
 	return true;
 }
 void
-list_print(List_ref this, char open, char close, FILE ref file,
+list_print(List_ref this, bool repr, char open, char close, FILE ref file,
 	   err_t ref err_out)
 {
 	err_t err = ERR_OK;
@@ -293,7 +318,7 @@ list_print(List_ref this, char open, char close, FILE ref file,
 			TRY_VOID(err);
 		}
 
-		value_print(this->values[i], true, file, &err);
+		value_print(this->values[i], repr, file, &err);
 		TRY_VOID(err);
 	}
 
@@ -390,6 +415,18 @@ _list_extend(struct List_struct own this, Value_ref ref values, usz n_values,
 	this->len += n_values;
 
 	return this;
+}
+List_own
+_list_join(struct List_struct own this, List_ref other, usz from,
+	   err_t ref err_out)
+{
+	if (from >= other->len) {
+		return this;
+	} else {
+		return _list_extend(
+			this, other->values + from, other->len - from, err_out
+		);
+	}
 }
 List_own
 _list_append(struct List_struct own this, Value_own value, err_t ref err_out)
@@ -607,7 +644,7 @@ hashmap_iseq(HashMap_ref this, HashMap_ref other)
 	return true;
 }
 void
-hashmap_print(HashMap_ref this, FILE ref file, err_t ref err_out)
+hashmap_print(HashMap_ref this, bool repr, FILE ref file, err_t ref err_out)
 {
 	err_t err = ERR_OK;
 	usz i;
@@ -621,11 +658,14 @@ hashmap_print(HashMap_ref this, FILE ref file, err_t ref err_out)
 			TRY_VOID(err);
 		}
 
-		string_print(this->keys[i], true, file, &err);
+		/* NOTE: hashmap keys should be all keywords,
+		 * and so should never be printed with repr=true
+		 */
+		string_print(this->keys[i], false, file, &err);
 		TRY_VOID(err);
 		fprintc(' ', file, &err);
 		TRY_VOID(err);
-		value_print(this->values[i], true, file, &err);
+		value_print(this->values[i], repr, file, &err);
 		TRY_VOID(err);
 	}
 
@@ -1142,4 +1182,91 @@ Env_ref
 fn_closure(Fn_ref this)
 {
 	return this->closure;
+}
+
+struct Atom_struct {
+	Value_own val;
+
+	usz ref_count;
+};
+MutAtom_own
+atom_new(Value_ref val, err_t ref err_out)
+{
+	err_t err = ERR_OK;
+	MutAtom_own res;
+
+	ALLOC();
+
+	res->val = value_copy(val);
+
+	return res;
+}
+MutAtom_own
+atom_copy(MutAtom_ref this)
+{
+	if (value_fns(this->val) > 0) {
+		value_copy(this->val);
+	}
+
+	++this->ref_count;
+	return (MutAtom_own)this;
+}
+void
+atom_free(Atom_own this)
+{
+	FREE_PRELUDE(Atom);
+
+	if (value_fns(this->val) > 0) {
+		value_free(this->val);
+	}
+
+	if (this->ref_count == 0) {
+		if (value_fns(this->val) == 0) {
+			value_free(this->val);
+		}
+		free((own_ptr)this);
+	}
+}
+
+void
+atom_print(Atom_ref this, FILE ref file, err_t ref err_out)
+{
+	err_t err = ERR_OK;
+
+	fprints("(atom ", file, &err);
+	TRY_VOID(err);
+	value_print(this->val, true, file, &err);
+	TRY_VOID(err);
+	fprintc(')', file, &err);
+	TRY_VOID(err);
+}
+Value_ref
+atom_get(Atom_ref this)
+{
+	return this->val;
+}
+void
+atom_set(MutAtom_ref this, Value_ref val)
+{
+	if (value_fns(this->val) > 0) {
+		usz i;
+		for (i = 0; i < this->ref_count; ++i) {
+			value_free(this->val);
+		}
+	} else {
+		value_free(this->val);
+	}
+	if (value_fns(val) > 0) {
+		usz i;
+		for (i = 0; i < this->ref_count; ++i) {
+			this->val = value_copy(val);
+		}
+	} else {
+		this->val = value_copy(val);
+	}
+}
+usz
+atom_fns(Atom_ref this)
+{
+	return value_fns(this->val);
 }

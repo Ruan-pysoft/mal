@@ -71,8 +71,7 @@ get_token(const char ref str, usz ref idx, struct token ref out, perr_t ref err_
 		bool escape = false;
 
 		while (str[*idx+len] != 0 && (escape ||
-				(str[*idx+len] != '"'
-				&& str[*idx+len] != '\n'))) {
+				(str[*idx+len] != '"'))) {
 			escape = !escape && (str[*idx+len] == '\\');
 
 			++len;
@@ -259,6 +258,69 @@ read_list(struct reader ref this, perr_t ref err_out)
 
 	return res;
 }
+static String_own
+read_string(struct reader ref this, const struct token ref tok,
+	    perr_t ref err_out)
+{
+	perr_t err = PERR_OK;
+	String own str;
+	FILE own file;
+	usz offset;
+	String_own res;
+
+	str = s_newalloc(tok->len, &err.e.errt);
+	PTRY_WITH(err, NULL);
+	file = (FILE own)sf_open(str, &err.e.errt);
+	if (!perr_is_ok(err)) {
+		s_free(str);
+		PERR_WITH(err, NULL);
+	}
+
+	offset = tok->offset + 1;
+	while (offset < tok->offset + tok->len - 1) {
+		if (this->src[offset] == '\\') {
+			char c;
+			++offset;
+
+			c = this->src[offset];
+
+			if (c == 'n') {
+				fprintc('\n', file, &err.e.errt);
+			} else {
+				fprintc(c, file, &err.e.errt);
+			}
+			if (!perr_is_ok(err)) {
+				close(file, NULL);
+				free(file);
+				s_free(str);
+				PERR_WITH(err, NULL);
+			}
+		} else {
+			fprintc(this->src[offset], file, &err.e.errt);
+			if (!perr_is_ok(err)) {
+				close(file, NULL);
+				free(file);
+				s_free(str);
+				PERR_WITH(err, NULL);
+			}
+		}
+
+		++offset;
+	}
+
+	close(file, &err.e.errt);
+	free(file);
+	if (!perr_is_ok(err)) {
+		s_free(str);
+		PERR_WITH(err, NULL);
+	}
+
+	res = string_new(s_to_c(str), &err.e.errt);
+	s_free(str);
+	PTRY_WITH(err, NULL);
+
+	return res;
+}
 static Value_own
 read_atom(struct reader ref this, perr_t ref err_out)
 {
@@ -325,13 +387,9 @@ read_atom(struct reader ref this, perr_t ref err_out)
 	} else if (this->src[tok->offset] == '"') {
 		/* string */
 
-		/* TODO: actually parse the string */
+		perr_t perr = PERR_OK;
 
-		String_own str = string_newn(
-			&this->src[tok->offset],
-			tok->len,
-			&err
-		);
+		String_own str = read_string(this, tok, &perr);
 		PTRY_FROM_WITH(err, NULL);
 
 		res = value_string(str, &err);
@@ -350,6 +408,48 @@ read_atom(struct reader ref this, perr_t ref err_out)
 		res = value_keyword(key, &err);
 		PTRY_FROM_WITH(err, NULL);
 		return res;
+	} else if (match_token(this->src, tok, "@")) {
+		perr_t err = PERR_OK;
+		String_own str;
+		Value_own val;
+		List_own res;
+
+		res = list_new(NULL, 0, &err.e.errt);
+		PTRY_WITH(err, NULL);
+
+		str = string_new("deref", &err.e.errt);
+		if (!perr_is_ok(err)) {
+			list_free(res);
+			PERR_WITH(err, NULL);
+		}
+		val = value_symbol(str, &err.e.errt);
+		if (!perr_is_ok(err)) {
+			list_free(res);
+			PERR_WITH(err, NULL);
+		}
+		res = _list_append(
+			(struct List_struct own)res,
+			val,
+			&err.e.errt
+		);
+		PTRY_WITH(err, NULL);
+
+		val = read_form(this, &err);
+		if (!perr_is_ok(err)) {
+			list_free(res);
+			PERR_WITH(err, NULL);
+		}
+		res = _list_append(
+			(struct List_struct own)res,
+			val,
+			&err.e.errt
+		);
+		PTRY_WITH(err, NULL);
+
+		val = value_list(res, &err.e.errt);
+		PTRY_WITH(err, NULL);
+
+		return val;
 	} else {
 		/* symbol */
 

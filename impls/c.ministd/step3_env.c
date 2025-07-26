@@ -127,6 +127,10 @@ eval_fn(Value_own head, List_own args, MutEnv_ref env, rerr_t ref err_out)
 			RTRY_WITH(err, NULL);
 			return res;
 		break; }
+		case VT_ATM: {
+			err = rerr_uncallable("atom");
+			ERR_WITH(err, NULL);
+		break; }
 	}
 
 	return NULL;
@@ -136,7 +140,7 @@ static Value_own
 eval_def(List_own args, MutEnv_ref env, rerr_t ref err_out)
 {
 	rerr_t err = RERR_OK;
-	Value_ref name, value;
+	Value_own name, value;
 
 	if (list_len(args) != 2) {
 		err = rerr_arg_len_mismatch(2, list_len(args));
