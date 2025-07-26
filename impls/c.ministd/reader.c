@@ -32,7 +32,7 @@ special(char c) {
 	return c != 0 && (
 		c <= ' ' || c == '[' || c == ']' || c == '{' || c == '}'
 		|| c == '(' || c == ')' || c == '\'' || c == '"' || c == ','
-		|| c == ';'
+		|| c == ';' || c == '`'
 	);
 }
 static bool
@@ -60,7 +60,7 @@ get_token(const char ref str, usz ref idx, struct token ref out, perr_t ref err_
 		out->offset = *idx; \
 		++*idx; \
 	} while (0)
-	if (str[*idx] == '~' && str[*idx] == '@') {
+	if (str[*idx] == '~' && str[*idx+1] == '@') {
 		out->len = 2;
 		out->offset = *idx;
 		*idx += 2;
@@ -95,6 +95,9 @@ get_token(const char ref str, usz ref idx, struct token ref out, perr_t ref err_
 
 		return false;
 	} else if (special(str[*idx])) {
+		CHAR_TOK();
+		return true;
+	} else if (str[*idx] == '`') {
 		CHAR_TOK();
 		return true;
 	} else if (str[*idx] == '~') {
@@ -322,6 +325,51 @@ read_string(struct reader ref this, const struct token ref tok,
 	return res;
 }
 static Value_own
+read_macro(struct reader ref this, const char ref name, perr_t ref err_out)
+{
+	perr_t err = PERR_OK;
+	String_own str;
+	Value_own val;
+	List_own res;
+
+	res = list_new(NULL, 0, &err.e.errt);
+	PTRY_WITH(err, NULL);
+
+	str = string_new(name, &err.e.errt);
+	if (!perr_is_ok(err)) {
+		list_free(res);
+		PERR_WITH(err, NULL);
+	}
+	val = value_symbol(str, &err.e.errt);
+	if (!perr_is_ok(err)) {
+		list_free(res);
+		PERR_WITH(err, NULL);
+	}
+	res = _list_append(
+		(struct List_struct own)res,
+		val,
+		&err.e.errt
+	);
+	PTRY_WITH(err, NULL);
+
+	val = read_form(this, &err);
+	if (!perr_is_ok(err)) {
+		list_free(res);
+		PERR_WITH(err, NULL);
+	}
+	res = _list_append(
+		(struct List_struct own)res,
+		val,
+		&err.e.errt
+	);
+	PTRY_WITH(err, NULL);
+
+	val = value_list(res, &err.e.errt);
+	PTRY_WITH(err, NULL);
+
+	return val;
+}
+static Value_own
 read_atom(struct reader ref this, perr_t ref err_out)
 {
 	err_t err = ERR_OK;
@@ -410,46 +458,29 @@ read_atom(struct reader ref this, perr_t ref err_out)
 		return res;
 	} else if (match_token(this->src, tok, "@")) {
 		perr_t err = PERR_OK;
-		String_own str;
-		Value_own val;
-		List_own res;
-
-		res = list_new(NULL, 0, &err.e.errt);
+		res = read_macro(this, "deref", &err);
 		PTRY_WITH(err, NULL);
-
-		str = string_new("deref", &err.e.errt);
-		if (!perr_is_ok(err)) {
-			list_free(res);
-			PERR_WITH(err, NULL);
-		}
-		val = value_symbol(str, &err.e.errt);
-		if (!perr_is_ok(err)) {
-			list_free(res);
-			PERR_WITH(err, NULL);
-		}
-		res = _list_append(
-			(struct List_struct own)res,
-			val,
-			&err.e.errt
-		);
+		return res;
+	} else if (match_token(this->src, tok, "'")) {
+		perr_t err = PERR_OK;
+		res = read_macro(this, "quote", &err);
 		PTRY_WITH(err, NULL);
-
-		val = read_form(this, &err);
-		if (!perr_is_ok(err)) {
-			list_free(res);
-			PERR_WITH(err, NULL);
-		}
-		res = _list_append(
-			(struct List_struct own)res,
-			val,
-			&err.e.errt
-		);
+		return res;
+	} else if (match_token(this->src, tok, "`")) {
+		perr_t err = PERR_OK;
+		res = read_macro(this, "quasiquote", &err);
 		PTRY_WITH(err, NULL);
-
-		val = value_list(res, &err.e.errt);
+		return res;
+	} else if (match_token(this->src, tok, "~")) {
+		perr_t err = PERR_OK;
+		res = read_macro(this, "unquote", &err);
 		PTRY_WITH(err, NULL);
-
-		return val;
+		return res;
+	} else if (match_token(this->src, tok, "~@")) {
+		perr_t err = PERR_OK;
+		res = read_macro(this, "splice-unquote", &err);
+		PTRY_WITH(err, NULL);
+		return res;
 	} else {
 		/* symbol */
 

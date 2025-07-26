@@ -69,6 +69,9 @@ static Value_own deref(List_own args, MutEnv_ref env, rerr_t ref err_out);
 static Value_own reset(List_own args, MutEnv_ref env, rerr_t ref err_out);
 static Value_own swap(List_own args, MutEnv_ref env, rerr_t ref err_out);
 
+static Value_own cons(List_own args, MutEnv_ref env, rerr_t ref err_out);
+static Value_own concat(List_own args, MutEnv_ref env, rerr_t ref err_out);
+
 const char ref core_names[CORE_LEN] = {
 	"+", "-", "*", "/",
 	"list", "list?", "empty?", "count", "=",
@@ -76,6 +79,7 @@ const char ref core_names[CORE_LEN] = {
 	"pr-str", "str", "prn", "println",
 	"read-string", "slurp",
 	"atom", "atom?", "deref", "reset!", "swap!",
+	"cons", "concat",
 };
 builtin_fn core_funcs[CORE_LEN] = {
 	op_add, op_sub, op_mul, op_div,
@@ -84,6 +88,7 @@ builtin_fn core_funcs[CORE_LEN] = {
 	core_prstr, str, prn, println,
 	read_string, slurp,
 	atom, isatom, deref, reset, swap,
+	cons, concat,
 };
 
 #define ARYTH_OP(op) do { \
@@ -870,7 +875,7 @@ swap(List_own args, MutEnv_ref env, rerr_t ref err_out)
 	}
 	fn = list_nth(args, 1, NULL);
 	if (!value_isfn(fn)) {
-		err = rerr_arg_type_mismatch(fn, 1, "function");
+		err = rerr_arg_type_mismatch(fn, 2, "function");
 		list_free(args);
 		RERR_WITH(err, NULL);
 	}
@@ -902,6 +907,96 @@ swap(List_own args, MutEnv_ref env, rerr_t ref err_out)
 	atom_set(value_getatom(atom, NULL), res);
 
 	list_free(args);
+
+	return res;
+}
+
+static Value_own
+cons(List_own args, MutEnv_ref env, rerr_t ref err_out)
+{
+	rerr_t err = RERR_OK;
+	Value_ref fst;
+	Value_ref rest;
+	List_own list;
+	Value_own res;
+
+	(void)env;
+
+	if (list_len(args) < 2) {
+		err = rerr_arg_vararg_mismatch(2, list_len(args));
+		list_free(args);
+		RERR_WITH(err, NULL);
+	}
+
+	fst = list_nth(args, 0, NULL);
+	rest = list_nth(args, 1, NULL);
+	if (!value_islist(rest)) {
+		err = rerr_arg_type_mismatch(rest, 2, "list");
+		list_free(args);
+		RERR_WITH(err, NULL);
+	}
+
+	list = list_new(&fst, 1, &err.e.errt);
+	if (!rerr_is_ok(err)) {
+		list_free(args);
+		RERR_WITH(err, NULL);
+	}
+
+	list = _list_join(
+		(struct List_struct ref)list,
+		value_getlist(rest, NULL),
+		0, &err.e.errt
+	);
+	list_free(args);
+	RTRY_WITH(err, NULL);
+
+	res = value_list(list, &err.e.errt);
+	RTRY_WITH(err, NULL);
+
+	return res;
+}
+static Value_own
+concat(List_own args, MutEnv_ref env, rerr_t ref err_out)
+{
+	rerr_t err = RERR_OK;
+	List_iter at;
+	usz arg_num = 1;
+	Value_ref arg;
+	List_own list;
+	Value_own res;
+
+	(void)env;
+
+	list = list_new(NULL, 0, &err.e.errt);
+	if (!rerr_is_ok(err)) {
+		list_free(args);
+		RERR_WITH(err, NULL);
+	}
+
+	for (at = list_iter(args); !list_isend(at); at = list_next(at)) {
+		arg = list_at(at, NULL);
+		if (!value_islist(arg)) {
+			err = rerr_arg_type_mismatch(arg, arg_num, "list");
+			list_free(args);
+			RERR_WITH(err, NULL);
+		}
+		++arg_num;
+
+		list = _list_join(
+			(struct List_struct ref)list,
+			value_getlist(arg, NULL),
+			0, &err.e.errt
+		);
+		if (!value_islist(arg)) {
+			list_free(args);
+			RERR_WITH(err, NULL);
+		}
+	}
+
+	list_free(args);
+
+	res = value_list(list, &err.e.errt);
+	RTRY_WITH(err, NULL);
 
 	return res;
 }

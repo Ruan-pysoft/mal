@@ -3,7 +3,7 @@
 
 #include "types.h"
 
-#define CORE_LEN 24
+#define CORE_LEN 26
 
 extern const char ref core_names[CORE_LEN];
 extern builtin_fn core_funcs[CORE_LEN];
